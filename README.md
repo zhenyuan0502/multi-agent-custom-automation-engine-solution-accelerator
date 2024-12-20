@@ -41,7 +41,7 @@ This application is an AI-driven orchestration system that manages a group of AI
 - Incorporate human feedback into the workflow.
 - Maintain state across sessions with persistent storage.
 
-This system is intended for developing and deploying custom AI solutions for specific customers. This code has not been tested as an end-to-end, reliable, RAI compliant production application- it is a foundation to help accelerate building out multi-agent systems. You are encouraged to add your own data and functions to the agents, and then you must apply your own performance and safety evaluation testing frameworks to this system before deploying it.
+This system is intended for developing and deploying custom AI solutions for specific customers. This code has not been tested as an end-to-end, reliable production application- it is a foundation to help accelerate building out multi-agent systems. You are encouraged to add your own data and functions to the agents, and then you must apply your own performance and safety evaluation testing frameworks to this system before deploying it.
 
 \
 ![image](./documentation/images/readme/macae-application.png)
