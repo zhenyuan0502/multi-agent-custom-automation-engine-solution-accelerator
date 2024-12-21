@@ -41,7 +41,7 @@ This application is an AI-driven orchestration system that manages a group of AI
 - Incorporate human feedback into the workflow.
 - Maintain state across sessions with persistent storage.
 
-This system is intended for developing and deploying custom AI solutions for specific customers. This code has not been tested as an end-to-end, reliable, RAI compliant production application- it is a foundation to help accelerate building out multi-agent systems. You are encouraged to add your own data and functions to the agents, and then you must apply your own performance and safety evaluation testing frameworks to this system before deploying it.
+This system is intended for developing and deploying custom AI solutions for specific customers. This code has not been tested as an end-to-end, reliable production application- it is a foundation to help accelerate building out multi-agent systems. You are encouraged to add your own data and functions to the agents, and then you must apply your own performance and safety evaluation testing frameworks to this system before deploying it.
 
 \
 ![image](./documentation/images/readme/macae-application.png)
@@ -179,7 +179,7 @@ az containerapp create \
 
 ### How to customize
 
-This solution is designed to be easily customizable. You can modify the front end site, or even build your own front end and attach to the backend API. You can further customize the backend by adding your own agents with their own specific capabilities. Deeper technical information to aid in this customization can be found in this [document](.\documentation\CustomizeSolution.md).
+This solution is designed to be easily customizable. You can modify the front end site, or even build your own front end and attach to the backend API. You can further customize the backend by adding your own agents with their own specific capabilities. Deeper technical information to aid in this customization can be found in this [document](./documentation/CustomizeSolution.md).
 
 ### Additional resources
 
