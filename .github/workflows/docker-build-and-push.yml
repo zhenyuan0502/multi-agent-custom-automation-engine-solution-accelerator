@@ -52,11 +52,11 @@ jobs:
       - name: Build and push Docker images
         run: |
           cd src/backend
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/macae-backend:${{ env.TAG }} -f Dockerfile . && \
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/macae-backend:${{ env.TAG }} && \
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/macaebackend:${{ env.TAG }} -f Dockerfile . && \
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/macaebackend:${{ env.TAG }} && \
           echo "Backend image built and pushed successfully."
           cd ../frontend
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/mac-webapp:${{ env.TAG }} -f Dockerfile . && \
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/mac-webapp:${{ env.TAG }} && \
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/macaefrontend:${{ env.TAG }} -f Dockerfile . && \
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/macaefrontend:${{ env.TAG }} && \
           echo "Frontend image built and pushed successfully."
           
