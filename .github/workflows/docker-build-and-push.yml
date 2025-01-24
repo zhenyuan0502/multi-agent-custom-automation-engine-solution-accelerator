@@ -32,20 +32,13 @@ jobs:
         uses: docker/setup-buildx-action@v1
 
       - name: Log in to Azure Container Registry
-        if: ${{ inputs.push == true && (github.ref_name == 'main' || github.ref_name == 'dev' || github.ref_name == 'demo' || github.ref_name == 'hotfix') }}
+        if: ${{ github.event_name == true && (github.ref_name == 'main' || github.ref_name == 'dev' || github.ref_name == 'demo' || github.ref_name == 'hotfix') }}
         uses: azure/docker-login@v2
         with:
           login-server: ${{ secrets.ACR_LOGIN_SERVER }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Debug inputs and refs
-        run: |
-          echo "inputs.push: ${{ inputs.push }}"
-          echo "github.ref_name: ${{ github.ref_name }}"
-          echo "github.event_name: ${{ github.event_name }}"
-
-          
       - name: Set Docker image tag
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
