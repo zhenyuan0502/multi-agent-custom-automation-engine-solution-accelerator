@@ -39,6 +39,11 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
+      - name: Debug inputs and refs
+        run: |
+          echo "inputs.push: ${{ inputs.push }}"
+          echo "github.ref_name: ${{ github.ref_name }}"
+          
       - name: Set Docker image tag
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
