@@ -1,30 +1,32 @@
 # app.py
 import asyncio
 import logging
+import os
 import uuid
 from typing import List, Optional
 from middleware.health_check import HealthCheckMiddleware
 from autogen_core.base import AgentId
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Query, Request
 from auth.auth_utils import get_authenticated_user_details
 from config import Config
 from context.cosmos_memory import CosmosBufferedChatCompletionContext
 from models.messages import (
-    BaseDataModel,
     HumanFeedback,
     HumanClarification,
     InputTask,
     Plan,
-    Session,
     Step,
     AgentMessage,
     PlanWithSteps,
 )
 from utils import initialize_runtime_and_context, retrieve_all_agent_tools, rai_success
-import asyncio
 from fastapi.middleware.cors import CORSMiddleware
+from azure.monitor.opentelemetry import configure_azure_monitor
+from azure.monitor.events.extension import track_event
+
+configure_azure_monitor(
+    connection_string=os.getenv("APPLICATIONINSIGHTS_INSTRUMENTATION_KEY")
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +36,11 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
     logging.WARNING
 )
 logging.getLogger("azure.identity.aio._internal").setLevel(logging.WARNING)
+
+# Suppress info logs from OpenTelemetry exporter
+logging.getLogger("azure.monitor.opentelemetry.exporter.export._base").setLevel(
+    logging.WARNING
+)
 
 # Initialize the FastAPI app
 app = FastAPI()
@@ -105,27 +112,60 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
 
     if not rai_success(input_task.description):
         print("RAI failed")
+
+        track_event(
+            "RAI failed",
+            {
+                "status": "Plan not created",
+                "description": input_task.description,
+                "session_id": input_task.session_id,
+            },
+        )
+
         return {
             "status": "Plan not created",
         }
-    authenticated_user = get_authenticated_user_details(
-    request_headers=request.headers
-    )
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
 
     if not user_id:
+        track_event("UserIdNotFound", {"status_code": 400, "detail": "no user"})
+
         raise HTTPException(status_code=400, detail="no user")
     if not input_task.session_id:
         input_task.session_id = str(uuid.uuid4())
 
     # Initialize runtime and context
-    runtime, _ = await initialize_runtime_and_context(input_task.session_id,user_id)
+    logging.info(
+        f"Initializing runtime and context for session {input_task.session_id}"
+    )
+    runtime, _ = await initialize_runtime_and_context(input_task.session_id, user_id)
 
     # Send the InputTask message to the GroupChatManager
     group_chat_manager_id = AgentId("group_chat_manager", input_task.session_id)
+    logging.info(f"Sending input task to group chat manager: {input_task.session_id}")
     plan: Plan = await runtime.send_message(input_task, group_chat_manager_id)
+
+    # Log the result
+    logging.info(f"Plan created: {plan.summary}")
+
+    # Log custom event for successful input task processing
+    track_event(
+        "InputTaskProcessed",
+        {
+            "status": f"Plan created:\n {plan.summary}"
+            if plan.id
+            else "Error occurred: Plan ID is empty",
+            "session_id": input_task.session_id,
+            "plan_id": plan.id,
+            "description": input_task.description,
+        },
+    )
+
     return {
-        "status": f"Plan created:\n {plan.summary}",
+        "status": f"Plan created:\n {plan.summary}"
+        if plan.id
+        else "Error occurred: Plan ID is empty",
         "session_id": input_task.session_id,
         "plan_id": plan.id,
         "description": input_task.description,
@@ -188,18 +228,29 @@ async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Reques
       400:
         description: Missing or invalid user information
     """
-    authenticated_user = get_authenticated_user_details(
-        request_headers=request.headers
-    )
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
+        track_event("UserIdNotFound", {"status_code": 400, "detail": "no user"})
         raise HTTPException(status_code=400, detail="no user")
     # Initialize runtime and context
-    runtime, _ = await initialize_runtime_and_context(human_feedback.session_id, user_id)
+    runtime, _ = await initialize_runtime_and_context(
+        human_feedback.session_id, user_id
+    )
 
     # Send the HumanFeedback message to the HumanAgent
     human_agent_id = AgentId("human_agent", human_feedback.session_id)
     await runtime.send_message(human_feedback, human_agent_id)
+
+    track_event(
+        "Completed Feedback received",
+        {
+            "status": "Feedback received",
+            "session_id": human_feedback.session_id,
+            "step_id": human_feedback.step_id,
+        },
+    )
+
     return {
         "status": "Feedback received",
         "session_id": human_feedback.session_id,
@@ -208,7 +259,9 @@ async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Reques
 
 
 @app.post("/human_clarification_on_plan")
-async def human_clarification_endpoint(human_clarification: HumanClarification, request: Request):
+async def human_clarification_endpoint(
+    human_clarification: HumanClarification, request: Request
+):
     """
     Receive human clarification on a plan.
 
@@ -252,18 +305,28 @@ async def human_clarification_endpoint(human_clarification: HumanClarification, 
       400:
         description: Missing or invalid user information
     """
-    authenticated_user = get_authenticated_user_details(
-        request_headers=request.headers
-    )
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
+        track_event("UserIdNotFound", {"status_code": 400, "detail": "no user"})
         raise HTTPException(status_code=400, detail="no user")
     # Initialize runtime and context
-    runtime, _ = await initialize_runtime_and_context(human_clarification.session_id, user_id)
+    runtime, _ = await initialize_runtime_and_context(
+        human_clarification.session_id, user_id
+    )
 
     # Send the HumanFeedback message to the HumanAgent
     planner_agent_id = AgentId("planner_agent", human_clarification.session_id)
     await runtime.send_message(human_clarification, planner_agent_id)
+
+    track_event(
+        "Completed Human clarification on the plan",
+        {
+            "status": "Clarification received",
+            "session_id": human_clarification.session_id,
+        },
+    )
+
     return {
         "status": "Clarification received",
         "session_id": human_clarification.session_id,
@@ -271,7 +334,9 @@ async def human_clarification_endpoint(human_clarification: HumanClarification, 
 
 
 @app.post("/approve_step_or_steps")
-async def approve_step_endpoint(human_feedback: HumanFeedback, request: Request) -> dict[str, str]:
+async def approve_step_endpoint(
+    human_feedback: HumanFeedback, request: Request
+) -> dict[str, str]:
     """
     Approve a step or multiple steps in a plan.
 
@@ -322,11 +387,10 @@ async def approve_step_endpoint(human_feedback: HumanFeedback, request: Request)
       400:
         description: Missing or invalid user information
     """
-    authenticated_user = get_authenticated_user_details(
-        request_headers=request.headers
-    )
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
+        track_event("UserIdNotFound", {"status_code": 400, "detail": "no user"})
         raise HTTPException(status_code=400, detail="no user")
     # Initialize runtime and context
     runtime, _ = await initialize_runtime_and_context(user_id=user_id)
@@ -341,15 +405,29 @@ async def approve_step_endpoint(human_feedback: HumanFeedback, request: Request)
     )
     # Return a status message
     if human_feedback.step_id:
+        track_event(
+            "Completed Human clarification with step_id",
+            {
+                "status": f"Step {human_feedback.step_id} - Approval:{human_feedback.approved}."
+            },
+        )
+
         return {
             "status": f"Step {human_feedback.step_id} - Approval:{human_feedback.approved}."
         }
     else:
+        track_event(
+            "Completed Human clarification without step_id",
+            {"status": "All steps approved"},
+        )
+
         return {"status": "All steps approved"}
 
 
 @app.get("/plans", response_model=List[PlanWithSteps])
-async def get_plans(request: Request, session_id: Optional[str] = Query(None)) -> List[PlanWithSteps]:
+async def get_plans(
+    request: Request, session_id: Optional[str] = Query(None)
+) -> List[PlanWithSteps]:
     """
     Retrieve plans for the current user.
 
@@ -407,18 +485,21 @@ async def get_plans(request: Request, session_id: Optional[str] = Query(None)) -
       404:
         description: Plan not found
     """
-    authenticated_user = get_authenticated_user_details(
-        request_headers=request.headers
-    )
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
+        track_event("UserIdNotFound", {"status_code": 400, "detail": "no user"})
         raise HTTPException(status_code=400, detail="no user")
-    
+
     cosmos = CosmosBufferedChatCompletionContext(session_id or "", user_id)
 
     if session_id:
         plan = await cosmos.get_plan_by_session(session_id=session_id)
         if not plan:
+            track_event(
+                "GetPlanBySessionNotFound",
+                {"status_code": 400, "detail": "Plan not found"},
+            )
             raise HTTPException(status_code=404, detail="Plan not found")
 
         steps = await cosmos.get_steps_by_plan(plan_id=plan.id)
@@ -492,11 +573,10 @@ async def get_steps_by_plan(plan_id: str, request: Request) -> List[Step]:
       404:
         description: Plan or steps not found
     """
-    authenticated_user = get_authenticated_user_details(
-        request_headers=request.headers
-    )
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
+        track_event("UserIdNotFound", {"status_code": 400, "detail": "no user"})
         raise HTTPException(status_code=400, detail="no user")
     cosmos = CosmosBufferedChatCompletionContext("", user_id)
     steps = await cosmos.get_steps_by_plan(plan_id=plan_id)
@@ -551,11 +631,10 @@ async def get_agent_messages(session_id: str, request: Request) -> List[AgentMes
       404:
         description: Agent messages not found
     """
-    authenticated_user = get_authenticated_user_details(
-        request_headers=request.headers
-    )
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
+        track_event("UserIdNotFound", {"status_code": 400, "detail": "no user"})
         raise HTTPException(status_code=400, detail="no user")
     cosmos = CosmosBufferedChatCompletionContext(session_id, user_id)
     agent_messages = await cosmos.get_data_by_type("agent_message")
@@ -582,9 +661,7 @@ async def delete_all_messages(request: Request) -> dict[str, str]:
       400:
         description: Missing or invalid user information
     """
-    authenticated_user = get_authenticated_user_details(
-        request_headers=request.headers
-    )
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
         raise HTTPException(status_code=400, detail="no user")
@@ -637,9 +714,7 @@ async def get_all_messages(request: Request):
       400:
         description: Missing or invalid user information
     """
-    authenticated_user = get_authenticated_user_details(
-        request_headers=request.headers
-    )
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
         raise HTTPException(status_code=400, detail="no user")
