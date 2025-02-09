@@ -52,4 +52,3 @@ def test_step_missing_required_fields():
             agent="test_agent",
             session_id="test_session",
         )
-        
