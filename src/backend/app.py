@@ -7,7 +7,6 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 import asyncio
 import logging
-import os
 import uuid
 from typing import List, Optional
 from src.backend.middleware.health_check import HealthCheckMiddleware
