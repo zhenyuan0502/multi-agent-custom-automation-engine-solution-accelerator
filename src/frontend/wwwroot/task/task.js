@@ -223,6 +223,14 @@
         const taskMessageAddButton = document.getElementById("taskMessageAddButton");
         const textInputContainer = document.getElementsByClassName("text-input-container");
         
+        if (isHumanClarificationResponseNotNull) {
+          // Update the local state to set human_clarification_request to null
+          data[0].human_clarification_request = null;
+          console.log("Human clarification request set to null locally.");
+        }
+
+        const isHumanClarificationRequestNull = data?.[0]?.human_clarification_request === null
+        
         if(isHumanClarificationRequestNull && taskMessageTextareaElement){
           taskMessageTextareaElement.setAttribute('disabled', true)
           taskMessageTextareaElement.style.backgroundColor = "#efefef";
