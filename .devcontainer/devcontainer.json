@@ -7,7 +7,6 @@
         "ghcr.io/rchaganti/vsc-devcontainer-features/azurebicep:1.0.5": {}
     },
 
-
     "postCreateCommand": "sudo chmod +x .devcontainer/setupEnv.sh && ./.devcontainer/setupEnv.sh",
     
     "customizations": {
