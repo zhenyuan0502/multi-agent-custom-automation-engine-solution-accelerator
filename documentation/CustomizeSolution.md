@@ -56,18 +56,8 @@ Every agent is equipped with a set of tools (functions) that it can call to perf
         ]
     ```
 
-2. **Add the Tools to the System**: Register the tools with a ToolAgent.
 
-    Example:
-    ```python
-    await ToolAgent.register(
-        runtime,
-        "baker_tool_agent",
-        lambda: ToolAgent("Baker tool execution agent", get_baker_tools()),
-    )
-    ```
-
-### **Step 2: Implement the Agent Class**
+2. **Implement the Agent Class**
 Create a new agent class that inherits from `BaseAgent`.
 
 Example (for `BakerAgent`):
@@ -87,17 +77,42 @@ class BakerAgent(BaseAgent):
             system_message="You are an AI Agent specialized in baking tasks.",
         )
 ```
+### **Step 2: Register the new Agent in the messages**
+Update  `messages.py` to include the new agent.
+
+    ```python
+     baker_agent = "BakerAgent"
+    ```
 
 ### **Step 3: Register the Agent in the Initialization Process**
 Update the `initialize_runtime_and_context` function in `utils.py` to include the new agent.
 
-1. **Generate Agent IDs**:
+1. **Import new agent**:
+    ```python
+    from agents.baker_agent import BakerAgent, get_baker_tools
+    ```
+
+2. **Add the bakers tools**:
+    ```python
+    baker_tools = get_baker_tools()
+    ```
+
+3. **Generate Agent IDs**:
     ```python
     baker_agent_id = AgentId("baker_agent", session_id)
     baker_tool_agent_id = AgentId("baker_tool_agent", session_id)
     ```
 
-2. **Register the Agent and ToolAgent**:
+4. **Register to ToolAgent**:
+    ```python
+    await ToolAgent.register(
+        runtime,
+        "baker_tool_agent",
+        lambda: ToolAgent("Baker tool execution agent", baker_tools),
+    )
+    ```
+
+5. **Register the Agent and ToolAgent**:
     ```python
     await BakerAgent.register(
         runtime,
@@ -112,6 +127,29 @@ Update the `initialize_runtime_and_context` function in `utils.py` to include th
         ),
     )
     ```
+6. **Add to HumanAgent**:
+    ```python
+    await HumanAgent.register(
+        BAgentType.baker_agent: baker_agent_id,
+    ```
+7. **Add to GroupChatManager**:
+    ```python
+    await GroupChatManager.register(
+        baker_tools: List[Tool] = get_baker_tools()
+    ```
+8. **Append to baker_tools to functions**:
+    ```python
+    for tool in baker_tools:
+        functions.append(
+            {
+                "agent": "BakerAgent",
+                "function": tool.name,
+                "description": tool.description,
+                "arguments": str(tool.schema["parameters"]["properties"]),
+            }
+        )
+    ```
+
 
 ### **Step 4: Update the Planner Agent**
 Modify `PlannerAgent` to recognize and include the new agent when generating plans.
@@ -127,12 +165,6 @@ Modify `PlannerAgent` to recognize and include the new agent when generating pla
         tech_support_agent_id,
         baker_agent_id,
     ]
-    ```
-
-2. **Update Tool List**:
-    Ensure the tool list passed to the PlannerAgent includes the new agent's tools.
-    ```python
-    tool_list = retrieve_all_agent_tools() + get_baker_tools()
     ```
 
 ### **Step 5: Validate the Integration**
