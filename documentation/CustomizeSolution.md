@@ -41,7 +41,7 @@ Every agent is equipped with a set of tools (functions) that it can call to perf
 
     Example (for a `BakerAgent`):
     ```python
-    from autogen_core.components.tools import FunctionTool
+    from autogen_core.components.tools import FunctionTool, Tool
 
     async def bake_cookies(cookie_type: str, quantity: int) -> str:
         return f"Baked {quantity} {cookie_type} cookies."
