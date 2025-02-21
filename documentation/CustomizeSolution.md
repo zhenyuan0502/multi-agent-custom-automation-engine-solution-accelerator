@@ -137,7 +137,7 @@ Update the `initialize_runtime_and_context` function in `utils.py` to include th
     await GroupChatManager.register(
         baker_tools: List[Tool] = get_baker_tools()
     ```
-8. **Append to baker_tools to functions**:
+8. **Append baker_tools to functions**:
     ```python
     for tool in baker_tools:
         functions.append(
