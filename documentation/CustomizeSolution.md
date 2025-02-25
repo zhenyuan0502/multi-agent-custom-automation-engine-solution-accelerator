@@ -82,7 +82,7 @@ Update  `messages.py` to include the new agent.
 
  ```python
     class BAgentType(str, Enum):
-     baker_agent = "BakerAgent"
+        baker_agent = "BakerAgent"
 ```
 
 ### **Step 3: Register the Agent in the Initialization Process**
