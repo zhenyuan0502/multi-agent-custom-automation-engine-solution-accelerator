@@ -32,7 +32,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 
 # Check if the Application Insights Instrumentation Key is set in the environment variables
-instrumentation_key = os.getenv("APPLICATIONINSIGHTS_INSTRUMENTATION_KEY")
+instrumentation_key = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
 if instrumentation_key:
     # Configure Application Insights if the Instrumentation Key is found
     configure_azure_monitor(connection_string=instrumentation_key)

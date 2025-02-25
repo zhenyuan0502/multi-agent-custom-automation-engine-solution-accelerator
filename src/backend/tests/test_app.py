@@ -15,7 +15,7 @@ os.environ["COSMOSDB_KEY"] = "mock-key"
 os.environ["COSMOSDB_DATABASE"] = "mock-database"
 os.environ["COSMOSDB_CONTAINER"] = "mock-container"
 os.environ[
-    "APPLICATIONINSIGHTS_INSTRUMENTATION_KEY"
+    "APPLICATIONINSIGHTS_CONNECTION_STRING"
 ] = "InstrumentationKey=mock-instrumentation-key;IngestionEndpoint=https://mock-ingestion-endpoint"
 os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"] = "mock-deployment-name"
 os.environ["AZURE_OPENAI_API_VERSION"] = "2023-01-01"
