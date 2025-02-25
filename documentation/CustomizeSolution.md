@@ -150,17 +150,40 @@ Update the `initialize_runtime_and_context` function in `utils.py` to include th
             }
         )
     ```
+### **Step 4: Update home page**
+Update  `src/frontend/wwwroot/home/home.html` adding new html block 
 
-### **Step 4: Validate the Integration**
+1. **Add a new UI element was added to allow users to request baking tasks from the BakerAgent**
+```html
+    <div class="column">
+        <div class="card is-hoverable quick-task">
+            <div class="card-content">
+                <i class="fa-solid fa-list-check has-text-info mb-3"></i><br />
+                <strong>Bake Cookies</strong>
+                <p class="quick-task-prompt">Please bake 12 chocolate chip cookies for tomorrow's event.</p>
+            </div>
+        </div>
+    </div>
+```   
+### **Step 5: Update tasks**
+Update `src/frontend/wwwroot/task/task.js` 
+
+1. **Add `BakerAgent` as a recognized agent type in the frontend JavaScript file**
+```js
+    case "BakerAgent":
+        agentIcon = "manager";
+        break;
+```
+### **Step 6: Validate the Integration**
 Deploy the updated system and ensure the new agent is properly included in the planning process. For example, if the user requests to bake cookies, the `PlannerAgent` should:
 
 - Identify the `BakerAgent` as the responsible agent.
 - Call `bake_cookies` or `prepare_dough` from the agent's toolset.
 
-### **Step 5: Update Documentation**
+### **Step 7: Update Documentation**
 Ensure that the system documentation reflects the addition of the new agent and its capabilities. Update the `README.md` and any related technical documentation to include information about the `BakerAgent`.
 
-### **Step 6: Testing**
+### **Step 8: Testing**
 Thoroughly test the agent in both automated and manual scenarios. Verify that:
 
 - The agent responds correctly to tasks.
