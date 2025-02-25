@@ -80,9 +80,9 @@ class BakerAgent(BaseAgent):
 ### **Step 2: Register the new Agent in the messages**
 Update  `messages.py` to include the new agent.
 
-    ```python
+ ```python
      baker_agent = "BakerAgent"
-    ```
+```
 
 ### **Step 3: Register the Agent in the Initialization Process**
 Update the `initialize_runtime_and_context` function in `utils.py` to include the new agent.
