@@ -118,7 +118,7 @@ Update the `initialize_runtime_and_context` function in `utils.py` to include th
         runtime,
         baker_agent_id.type,
         lambda: BakerAgent(
-            model_client,
+            aoi_model_client,
             session_id,
             user_id,
             cosmos_memory,
