@@ -81,6 +81,7 @@ class BakerAgent(BaseAgent):
 Update  `messages.py` to include the new agent.
 
  ```python
+    class BAgentType(str, Enum):
      baker_agent = "BakerAgent"
 ```
 
