@@ -16,7 +16,7 @@ def setup_environment_variables():
     os.environ["COSMOSDB_KEY"] = "mock-key"
     os.environ["COSMOSDB_DATABASE"] = "mock-database"
     os.environ["COSMOSDB_CONTAINER"] = "mock-container"
-    os.environ["APPLICATIONINSIGHTS_INSTRUMENTATION_KEY"] = "mock-instrumentation-key"
+    os.environ["APPLICATIONINSIGHTS_CONNECTION_STRING"] = "mock-instrumentation-key"
     os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"] = "mock-deployment-name"
     os.environ["AZURE_OPENAI_API_VERSION"] = "2023-01-01"
     os.environ["AZURE_OPENAI_ENDPOINT"] = "https://mock-openai-endpoint"
@@ -46,7 +46,7 @@ def ensure_env_variables(monkeypatch):
         "COSMOSDB_KEY": "mock-key",
         "COSMOSDB_DATABASE": "mock-database",
         "COSMOSDB_CONTAINER": "mock-container",
-        "APPLICATIONINSIGHTS_INSTRUMENTATION_KEY": "mock-instrumentation-key",
+        "APPLICATIONINSIGHTS_CONNECTION_STRING": "mock-instrumentation-key",
         "AZURE_OPENAI_DEPLOYMENT_NAME": "mock-deployment-name",
         "AZURE_OPENAI_API_VERSION": "2023-01-01",
         "AZURE_OPENAI_ENDPOINT": "https://mock-openai-endpoint",
