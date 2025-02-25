@@ -150,33 +150,16 @@ Update the `initialize_runtime_and_context` function in `utils.py` to include th
         )
     ```
 
-
-### **Step 4: Update the Planner Agent**
-Modify `PlannerAgent` to recognize and include the new agent when generating plans.
-
-1. **Update Available Agents**:
-    ```python
-    available_agents = [
-        hr_agent_id,
-        marketing_agent_id,
-        procurement_agent_id,
-        product_agent_id,
-        generic_agent_id,
-        tech_support_agent_id,
-        baker_agent_id,
-    ]
-    ```
-
-### **Step 5: Validate the Integration**
+### **Step 4: Validate the Integration**
 Deploy the updated system and ensure the new agent is properly included in the planning process. For example, if the user requests to bake cookies, the `PlannerAgent` should:
 
 - Identify the `BakerAgent` as the responsible agent.
 - Call `bake_cookies` or `prepare_dough` from the agent's toolset.
 
-### **Step 6: Update Documentation**
+### **Step 5: Update Documentation**
 Ensure that the system documentation reflects the addition of the new agent and its capabilities. Update the `README.md` and any related technical documentation to include information about the `BakerAgent`.
 
-### **Step 7: Testing**
+### **Step 6: Testing**
 Thoroughly test the agent in both automated and manual scenarios. Verify that:
 
 - The agent responds correctly to tasks.
