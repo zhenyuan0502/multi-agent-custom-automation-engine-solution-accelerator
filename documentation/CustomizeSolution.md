@@ -129,14 +129,14 @@ Update the `initialize_runtime_and_context` function in `utils.py` to include th
         ),
     )
     ```
-6. **Add to HumanAgent**:
+6. **Add to agent_ids**:
     ```python
-    await HumanAgent.register(
+    agent_ids = {
         BAgentType.baker_agent: baker_agent_id,
     ```
-7. **Add to GroupChatManager**:
+7. **Add to retrieve_all_agent_tools**:
     ```python
-    await GroupChatManager.register(
+    def retrieve_all_agent_tools() -> List[Dict[str, Any]]:
         baker_tools: List[Tool] = get_baker_tools()
     ```
 8. **Append baker_tools to functions**:
