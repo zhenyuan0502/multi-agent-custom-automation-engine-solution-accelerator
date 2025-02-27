@@ -42,6 +42,7 @@ Every agent is equipped with a set of tools (functions) that it can call to perf
     Example (for a `BakerAgent`):
     ```python
     from autogen_core.components.tools import FunctionTool, Tool
+    from typing import List
 
     async def bake_cookies(cookie_type: str, quantity: int) -> str:
         return f"Baked {quantity} {cookie_type} cookies."
@@ -119,7 +120,7 @@ Update the `initialize_runtime_and_context` function in `utils.py` to include th
         runtime,
         baker_agent_id.type,
         lambda: BakerAgent(
-            aoi_model_client,
+            aoai_model_client,
             session_id,
             user_id,
             cosmos_memory,
