@@ -18,7 +18,6 @@ param tags object = {}
 @description('The size of the resources to deploy, defaults to a mini size')
 param resourceSize {
   gpt4oCapacity: int
-  cosmosThroughput: int
   containerAppSize: {
     cpu: string
     memory: string
@@ -27,7 +26,6 @@ param resourceSize {
   }
 } = {
   gpt4oCapacity: 50
-  cosmosThroughput: 1000
   containerAppSize: {
     cpu: '2.0'
     memory: '4.0Gi'
@@ -154,6 +152,7 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
         locationName: cosmosLocation
       }
     ]
+    capabilities: [ { name: 'EnableServerless' } ]
   }
 
   resource contributorRoleDefinition 'sqlRoleDefinitions' existing = {
@@ -166,9 +165,6 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
       resource: {
         id: 'autogen'
         createMode: 'Default'
-      }
-      options: {
-        throughput: resourceSize.cosmosThroughput
       }
     }
 
