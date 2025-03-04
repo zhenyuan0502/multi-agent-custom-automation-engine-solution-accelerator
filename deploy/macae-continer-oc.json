@@ -5,8 +5,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.32.4.45862",
-      "templateHash": "13282901028774763433"
+      "version": "0.33.93.31351",
+      "templateHash": "9524414973084491660"
     }
   },
   "parameters": {
@@ -44,9 +44,6 @@
         "gpt4oCapacity": {
           "type": "int"
         },
-        "cosmosThroughput": {
-          "type": "int"
-        },
         "containerAppSize": {
           "type": "object",
           "properties": {
@@ -67,7 +64,6 @@
       },
       "defaultValue": {
         "gpt4oCapacity": 50,
-        "cosmosThroughput": 1000,
         "containerAppSize": {
           "cpu": "2.0",
           "memory": "4.0Gi",
@@ -147,9 +143,6 @@
         "resource": {
           "id": "autogen",
           "createMode": "Default"
-        },
-        "options": {
-          "throughput": "[parameters('resourceSize').cosmosThroughput]"
         }
       },
       "dependsOn": [
@@ -243,6 +236,11 @@
           {
             "failoverPriority": 0,
             "locationName": "[parameters('location')]"
+          }
+        ],
+        "capabilities": [
+          {
+            "name": "EnableServerless"
           }
         ]
       }
