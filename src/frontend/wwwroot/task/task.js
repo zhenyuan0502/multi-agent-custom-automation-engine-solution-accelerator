@@ -8,6 +8,7 @@
   const taskPauseButton = document.getElementById("taskPauseButton");
   const taskAgentsButton = document.getElementById("taskAgentsButton");
   const taskWokFlowButton = document.getElementById("taskWokFlowButton");
+  const taskMessageTextarea=document.getElementById("taskMessageTextarea");
   const taskMessageAddButton = document.getElementById("taskMessageAddButton");
   const taskMessages = document.getElementById("taskMessages");
   const taskDetailsAgents = document.getElementById("taskDetailsAgents");
@@ -162,6 +163,21 @@
       taskCancelButton.addEventListener("click", (event) => {
         const apiTaskStore = JSON.parse(sessionStorage.getItem("apiTask"));
         handleDisableOfActions("completed")
+
+         // Explicitly disable chatbox and message button
+         taskMessageTextarea.disabled = true;
+         taskMessageTextarea.style.backgroundColor = "#efefef";
+         taskMessageTextarea.style.cursor = 'not-allowed';
+ 
+         taskMessageAddButton.disabled = true;
+         taskMessageAddButton.style.cursor = 'not-allowed';
+ 
+         const textInputContainer = document.getElementsByClassName("text-input-container");
+         if (textInputContainer[0]) {
+             textInputContainer[0].style.backgroundColor = '#efefef';
+             textInputContainer[0].style.cursor = 'not-allowed';
+         }
+ 
         actionStages(apiTaskStore, false);
       });
     }
@@ -235,26 +251,29 @@
           taskMessageTextareaElement.setAttribute('disabled', true)
           taskMessageTextareaElement.style.backgroundColor = "#efefef";
           taskMessageTextareaElement.style.cursor = 'not-allowed';
-        } else {
-          taskMessageTextareaElement.removeAttribute('disabled')
-          taskMessageTextareaElement.style.backgroundColor = "white"
-          taskMessageTextareaElement.style.cursor = '';
-        }
+        } 
+        // else {
+        //   taskMessageTextareaElement.removeAttribute('disabled')
+        //   taskMessageTextareaElement.style.backgroundColor = "white"
+        //   taskMessageTextareaElement.style.cursor = '';
+        // }
         if(isHumanClarificationRequestNull && taskMessageAddButton){
           taskMessageAddButton.setAttribute('disabled', true)
           taskMessageAddButton.style.cursor = 'not-allowed';
-        } else {
-          taskMessageAddButton.removeAttribute('disabled')
-          taskMessageAddButton.style.cursor = 'pointer';
-        }
+        } 
+        // else {
+        //   taskMessageAddButton.removeAttribute('disabled')
+        //   taskMessageAddButton.style.cursor = 'pointer';
+        // }
 
         if(isHumanClarificationRequestNull && textInputContainer[0]){ 
           textInputContainer[0].style.backgroundColor = '#efefef';
           textInputContainer[0].style.cursor = 'not-allowed';
-        } else { 
-          textInputContainer[0].style.backgroundColor = 'white';
-          textInputContainer[0].style.cursor = '';
-        }
+        } 
+        // else { 
+        //   textInputContainer[0].style.backgroundColor = 'white';
+        //   textInputContainer[0].style.cursor = '';
+        // }
 
       })
       .catch((error) => {
