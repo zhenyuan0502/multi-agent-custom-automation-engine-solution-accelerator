@@ -627,6 +627,12 @@
     } else if (task.overall_status === "in_progress") {
       removeClassesExcept(taskStatusTag, "tag");
       taskStatusTag.classList.add("is-info");
+      const iconElement = taskPauseButton.querySelector("i");
+         if (iconElement.classList.contains("fa-circle-play")) {
+           iconElement.classList.remove("fa-circle-play");
+           iconElement.classList.add("fa-circle-pause");
+         }
+
     }
     handleDisableOfActions(task.overall_status)
   };
