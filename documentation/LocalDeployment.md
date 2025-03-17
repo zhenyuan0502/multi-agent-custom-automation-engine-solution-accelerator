@@ -80,7 +80,7 @@ The files for the dev container are located in `/.devcontainer/` folder.
      ```bash
      az ad signed-in-user show --query id -o tsv
      ```
-     You will also be prompted for locations for Cosmos and Open AI services.  This is to allow separate regions where there may be service quota restrictions.
+     You will also be prompted for locations for Cosmos and OpenAI services.  This is to allow separate regions where there may be service quota restrictions.
 
    - **Additional Notes**:
 
