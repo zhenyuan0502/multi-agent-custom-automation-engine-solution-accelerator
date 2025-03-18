@@ -74,7 +74,7 @@ window.getStoredData = (key)=> {
 
         // If not found in localStorage, check sessionStorage
         if (!data) {
-            data = getStoredData(key);
+            data = sessionStorage.getItem(key);
             if (data) {
                 // Move data from sessionStorage to localStorage
                 setStoredData(key, data);
