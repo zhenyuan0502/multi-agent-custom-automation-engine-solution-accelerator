@@ -788,11 +788,7 @@
           // Update the lastDataHash to the new hash
           lastDataHash = newDataHash;
 
-          // Continue polling by calling fetchLoop again
-          setTimeout(
-            () => fetchLoop(id),
-            Number(getStoredData("apiRefreshRate"))
-          );
+       
         } catch (error) {
           console.error("Error in fetchLoop:", error);
         }
