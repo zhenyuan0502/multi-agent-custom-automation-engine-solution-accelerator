@@ -2,7 +2,6 @@ using './macae.bicep'
 
 param resourceSize = {
   gpt4oCapacity: 15
-  cosmosThroughput: 400
   containerAppSize: {
     cpu: '1.0'
     memory: '2.0Gi'
