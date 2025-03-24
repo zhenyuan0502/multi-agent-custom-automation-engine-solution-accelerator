@@ -366,7 +366,7 @@
                   "value": "[format('https://{0}.azurewebsites.net', format(variables('uniqueNameFormat'), 'frontend'))]"
                 },
                 {
-                  "name": "APPLICATIONINSIGHTS_INSTRUMENTATION_KEY",
+                  "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
                   "value": "[reference('appInsights').ConnectionString]"
                 }
               ]
