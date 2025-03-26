@@ -28,7 +28,11 @@ import html
 @app.get("/config.js", response_class=PlainTextResponse)
 def get_config():
     backend_url = html.escape(os.getenv("BACKEND_API_URL", "http://localhost:8000"))
-    return f'const BACKEND_API_URL = "{backend_url}";'
+    auth_enabled = html.escape(os.getenv("AUTH_ENABLED", "True"))
+    return f'''
+        const BACKEND_API_URL = "{backend_url}";
+        const AUTH_ENABLED = "{auth_enabled}";
+        '''
 
 
 # Redirect root to app.html
