@@ -1,21 +1,10 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
 
 name: multi-agent-custom-automation-engine-solution-accelerator
-# metadata:
-#     template: azd-init@1.13.1
-# services:
-#     backend:
-#         project: src/backend
-#         host: containerapp
-#         language: python
-#         docker:
-#             path: Dockerfile
-#     frontend:
-#         project: src/frontend
-#         host: containerapp
-#         language: python
-#         docker:
-#             path: Dockerfile
+parameters:
+  baseUrl:
+    type: string
+    default: 'https://github.com/TravisHilbert/Modernize-your-code-solution-accelerator'
 deployment:
   mode: Incremental
   template: ./infra/main.bicep  # Path to the main.bicep file inside the 'deployment' folder
