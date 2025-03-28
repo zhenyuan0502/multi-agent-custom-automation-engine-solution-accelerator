@@ -7,4 +7,4 @@ parameters:
     default: 'https://github.com/TravisHilbert/Modernize-your-code-solution-accelerator'
 deployment:
   mode: Incremental
-  template: ./infra/main.bicep  # Path to the main.bicep file inside the 'deployment' folder
+  template: ./infra/macae-continer.bicep  # Path to the main.bicep file inside the 'deployment' folder
