@@ -2,12 +2,12 @@
 param location string = 'EastUS2' //Fixed for model availability, change back to resourceGroup().location
 
 @description('Location for OpenAI resources.')
-param azureOpenAILocation string = 'EastUS' //Fixed for model availability
+param azureOpenAILocation string = 'japaneast' //Fixed for model availability
 
 
 
 @description('A prefix to add to the start of all resource names. Note: A "unique" suffix will also be added')
-param prefix string = 'macae'
+param prefix string = 'macae8'
 
 @description('Tags to apply to all deployed resources')
 param tags object = {}
@@ -22,7 +22,7 @@ param resourceSize {
     maxReplicas: int
   }
 } = {
-  gpt4oCapacity: 50
+  gpt4oCapacity: 1
   containerAppSize: {
     cpu: '2.0'
     memory: '4.0Gi'
@@ -42,7 +42,6 @@ var frontendDockerImageURL = '${resgistryName}.azurecr.io/macaefrontend:${appVer
 
 var uniqueNameFormat = '${prefix}-{0}-${uniqueString(resourceGroup().id, prefix)}'
 var aoaiApiVersion = '2024-08-01-preview'
-
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: format(uniqueNameFormat, 'logs')
@@ -283,7 +282,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
     }
-    
+
   }
 
   }
@@ -341,4 +340,31 @@ resource frontendAppService 'Microsoft.Web/sites@2021-02-01' = {
   }
 }
 
-output cosmosAssignCli string = 'az cosmosdb sql role assignment create --resource-group "${resourceGroup().name}" --account-name "${cosmos.name}" --role-definition-id "${cosmos::contributorRoleDefinition.id}" --scope "${cosmos.id}" --principal-id "fill-in"'
+var cosmosAssignCli  = 'az cosmosdb sql role assignment create --resource-group "${resourceGroup().name}" --account-name "${cosmos.name}" --role-definition-id "${cosmos::contributorRoleDefinition.id}" --scope "${cosmos.id}" --principal-id "${containerApp.identity.principalId}"'
+
+module managedIdentityModule 'deploy_managed_identity.bicep' = {
+  name: 'deploy_managed_identity'
+  params: {
+    solutionName: prefix
+    solutionLocation: location
+  }
+  scope: resourceGroup(resourceGroup().name)
+}
+
+module deploymentScriptCLI 'br/public:avm/res/resources/deployment-script:0.5.1' = {
+  name: 'deploymentScriptCLI'
+  params: {
+    // Required parameters
+    kind: 'AzureCLI'
+    name: 'rdsmin001'
+    // Non-required parameters
+    azCliVersion: '2.69.0'
+    location: location
+    managedIdentities: {
+      userAssignedResourceIds: [
+        managedIdentityModule.outputs.managedIdentityId
+      ]
+    }
+    scriptContent: cosmosAssignCli
+  }
+}
