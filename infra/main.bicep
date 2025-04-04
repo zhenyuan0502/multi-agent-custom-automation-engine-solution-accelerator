@@ -30,10 +30,11 @@ param resourceSize {
     maxReplicas: 1
   }
 }
+param capacity int = 1
+
 
 var modelVersion = '2024-08-06'
 var aiServicesName = '${prefix}-aiservices'
-param capacity int = 1
 var deploymentType  = 'GlobalStandard'
 var gptModelVersion = 'gpt-4o'
 var appVersion = 'latest'
