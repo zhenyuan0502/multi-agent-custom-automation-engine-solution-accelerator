@@ -7,7 +7,7 @@ param azureOpenAILocation string = 'japaneast' //Fixed for model availability
 
 
 @description('A prefix to add to the start of all resource names. Note: A "unique" suffix will also be added')
-param prefix string = 'macae8'
+param prefix string = 'macaeo'
 
 @description('Tags to apply to all deployed resources')
 param tags object = {}
@@ -31,7 +31,11 @@ param resourceSize {
   }
 }
 
-
+var modelVersion = '2024-08-06'
+var aiServicesName = '${prefix}-aiservices'
+param capacity int = 1
+var deploymentType  = 'GlobalStandard'
+var gptModelVersion = 'gpt-4o'
 var appVersion = 'latest'
 var resgistryName = 'biabcontainerreg'
 var dockerRegistryUrl = 'https://${resgistryName}.azurecr.io'
@@ -65,41 +69,112 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02-preview' = {
   }
 }
 
-resource openai 'Microsoft.CognitiveServices/accounts@2023-10-01-preview' = {
-  name: format(uniqueNameFormat, 'openai')
-  location: azureOpenAILocation
-  tags: tags
-  kind: 'OpenAI'
+
+var aiModelDeployments = [
+  {
+    name: gptModelVersion
+    model: gptModelVersion
+    version: modelVersion
+    sku: {
+      name: deploymentType
+      capacity: capacity
+    }
+    raiPolicyName: 'Microsoft.Default'
+  }
+]
+
+resource aiServices 'Microsoft.CognitiveServices/accounts@2024-04-01-preview' = {
+  name: aiServicesName
+  location: location
   sku: {
     name: 'S0'
   }
+  kind: 'AIServices'
   properties: {
-    customSubDomainName: format(uniqueNameFormat, 'openai')
-  }
-  resource gpt4o 'deployments' = {
-    name: 'gpt-4o'
-    sku: {
-      name: 'GlobalStandard'
-      capacity: resourceSize.gpt4oCapacity
-    }
-    properties: {
-      model: {
-        format: 'OpenAI'
-        name: 'gpt-4o'
-        version: '2024-08-06'
-      }
-      versionUpgradeOption: 'NoAutoUpgrade'
+    customSubDomainName: aiServicesName
+    apiProperties: {
+      statisticsEnabled: false
     }
   }
 }
+
+resource aiServicesDeployments 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = [for aiModeldeployment in aiModelDeployments: {
+  parent: aiServices //aiServices_m
+  name: aiModeldeployment.name
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: aiModeldeployment.model
+      version: aiModeldeployment.version
+    }
+    raiPolicyName: aiModeldeployment.raiPolicyName
+  }
+  sku:{
+    name: aiModeldeployment.sku.name
+    capacity: aiModeldeployment.sku.capacity
+  }
+}]
+
+module kvault 'deploy_keyvault.bicep' = {
+  name: 'deploy_keyvault'
+  params: {
+    solutionName: prefix
+    solutionLocation: location
+    managedIdentityObjectId:managedIdentityModule.outputs.managedIdentityOutput.objectId
+  }
+  scope: resourceGroup(resourceGroup().name)
+}
+
+module aifoundry 'deploy_ai_foundry.bicep' = {
+  name: 'deploy_ai_foundry'
+  params: {
+    solutionName: prefix
+    solutionLocation: azureOpenAILocation
+    keyVaultName: kvault.outputs.keyvaultName
+    gptModelName: gptModelVersion
+    gptModelVersion: gptModelVersion
+    managedIdentityObjectId:managedIdentityModule.outputs.managedIdentityOutput.objectId
+    aiServicesEndpoint: aiServices.properties.endpoint
+    aiServicesKey: aiServices.listKeys().key1
+    aiServicesId: aiServices.id
+  }
+  scope: resourceGroup(resourceGroup().name)
+}
+// resource openai 'Microsoft.CognitiveServices/accounts@2023-10-01-preview' = {
+//   name: format(uniqueNameFormat, 'openai')
+//   location: azureOpenAILocation
+//   tags: tags
+//   kind: 'OpenAI'
+//   sku: {
+//     name: 'S0'
+//   }
+//   properties: {
+//     customSubDomainName: format(uniqueNameFormat, 'openai')
+//   }
+//   resource gpt4o 'deployments' = {
+//     name: 'gpt-4o'
+//     sku: {
+//       name: 'GlobalStandard'
+//       capacity: resourceSize.gpt4oCapacity
+//     }
+//     properties: {
+//       model: {
+//         format: 'OpenAI'
+//         name: gptModelVersion
+//         version: '2024-08-06'
+//       }
+//       versionUpgradeOption: 'NoAutoUpgrade'
+//     }
+//   }
+// }
 
 resource aoaiUserRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-05-01-preview' existing = {
   name: '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd' //'Cognitive Services OpenAI User'
 }
 
 resource acaAoaiRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(containerApp.id, openai.id, aoaiUserRoleDefinition.id)
-  scope: openai
+  name: guid(containerApp.id, aiServices.id, aoaiUserRoleDefinition.id)
+  scope: aiServices
   properties: {
     principalId: containerApp.identity.principalId
     roleDefinitionId: aoaiUserRoleDefinition.id
@@ -260,11 +335,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             }
             {
               name: 'AZURE_OPENAI_ENDPOINT'
-              value: openai.properties.endpoint
+              value: aiServices.properties.endpoint
             }
             {
               name: 'AZURE_OPENAI_DEPLOYMENT_NAME'
-              value: openai::gpt4o.name
+              value: gptModelVersion
             }
             {
               name: 'AZURE_OPENAI_API_VERSION'
@@ -305,12 +380,12 @@ resource frontendAppService 'Microsoft.Web/sites@2021-02-01' = {
   name: format(uniqueNameFormat, 'frontend')
   location: location
   tags: tags
-  kind: 'app,linux,container'  // Add this line
+  kind: 'app,linux,container'
   properties: {
     serverFarmId: frontendAppServicePlan.id
     reserved: true
     siteConfig: {
-      linuxFxVersion:'DOCKER|${frontendDockerImageURL}'
+      linuxFxVersion: 'DOCKER|${frontendDockerImageURL}'
       appSettings: [
         {
           name: 'DOCKER_REGISTRY_SERVER_URL'
@@ -321,8 +396,8 @@ resource frontendAppService 'Microsoft.Web/sites@2021-02-01' = {
           value: '3000'
         }
         {
-          name: 'WEBSITES_CONTAINER_START_TIME_LIMIT'  // Add startup time limit
-          value: '1800'  // 30 minutes, adjust as needed
+          name: 'WEBSITES_CONTAINER_START_TIME_LIMIT'
+          value: '1800'
         }
         {
           name: 'BACKEND_API_URL'
@@ -346,7 +421,10 @@ module managedIdentityModule 'deploy_managed_identity.bicep' = {
   name: 'deploy_managed_identity'
   params: {
     solutionName: prefix
-    solutionLocation: location
+    //solutionLocation: location
+    managedIdentityId: pullIdentity.id
+    managedIdentityPropPrin: pullIdentity.properties.principalId
+    managedIdentityLocation: pullIdentity.location
   }
   scope: resourceGroup(resourceGroup().name)
 }

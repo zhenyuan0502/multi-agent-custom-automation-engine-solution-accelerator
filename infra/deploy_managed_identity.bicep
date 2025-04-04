@@ -7,19 +7,21 @@ targetScope = 'resourceGroup'
 param solutionName string
 
 @description('Solution Location')
-param solutionLocation string
-
+//param solutionLocation string
+param managedIdentityId string
+param managedIdentityPropPrin string
+param managedIdentityLocation string
 @description('Name')
 param miName string = '${ solutionName }-managed-identity'
 
-resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
-  name: miName
-  location: solutionLocation
-  tags: {
-    app: solutionName
-    location: solutionLocation
-  }
-}
+// resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+//   name: miName
+//   location: solutionLocation
+//   tags: {
+//     app: solutionName
+//     location: solutionLocation
+//   }
+// }
 
 @description('This is the built-in owner role. See https://docs.microsoft.com/azure/role-based-access-control/built-in-roles#owner')
 resource ownerRoleDefinition 'Microsoft.Authorization/roleDefinitions@2018-01-01-preview' existing = {
@@ -28,20 +30,21 @@ resource ownerRoleDefinition 'Microsoft.Authorization/roleDefinitions@2018-01-01
 }
 
 resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, managedIdentity.id, ownerRoleDefinition.id)
+  name: guid(resourceGroup().id, managedIdentityId, ownerRoleDefinition.id)
   properties: {
-    principalId: managedIdentity.properties.principalId
+    principalId: managedIdentityPropPrin
     roleDefinitionId:  ownerRoleDefinition.id
     principalType: 'ServicePrincipal' 
   }
 }
 
+
 output managedIdentityOutput object = {
-  id: managedIdentity.id
-  objectId: managedIdentity.properties.principalId
-  resourceId: managedIdentity.id
-  location: managedIdentity.location
+  id: managedIdentityId
+  objectId: managedIdentityPropPrin
+  resourceId: managedIdentityId
+  location: managedIdentityLocation
   name: miName
 }
 
-output managedIdentityId string = managedIdentity.id
+output managedIdentityId string = managedIdentityId
