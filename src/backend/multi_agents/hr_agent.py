@@ -1,20 +1,10 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
-from semantic_kernel.kernel_arguments import KernelArguments
-from typing_extensions import Annotated
 
 from multi_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
-
-def load_hr_tools_config(config_path: Optional[str] = None) -> Dict[str, Any]:
-    """Load HR tools configuration from a JSON file."""
-    return BaseAgent.load_tools_config("hr", config_path)
-
-def get_hr_tools(kernel: sk.Kernel, config_path: Optional[str] = None) -> List[KernelFunction]:
-    """Get the list of HR tools for the HR Agent from configuration."""
-    return BaseAgent.get_tools_from_config(kernel, "hr", config_path)
 
 class HrAgent(BaseAgent):
     """HR agent implementation using Semantic Kernel."""
@@ -39,7 +29,7 @@ class HrAgent(BaseAgent):
             config_path: Optional path to the HR tools configuration file
         """
         # Load configuration
-        config = load_hr_tools_config(config_path)
+        config = self.load_tools_config("hr", config_path)
         
         super().__init__(
             agent_name=config.get("agent_name", "HrAgent"),

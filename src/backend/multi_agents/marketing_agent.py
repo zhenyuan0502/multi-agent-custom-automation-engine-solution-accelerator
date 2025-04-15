@@ -7,14 +7,6 @@ from semantic_kernel.kernel_arguments import KernelArguments
 from multi_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 
-def load_marketing_tools_config(config_path: Optional[str] = None) -> Dict[str, Any]:
-    """Load marketing tools configuration from a JSON file."""
-    return BaseAgent.load_tools_config("marketing", config_path)
-
-def get_marketing_tools(kernel: sk.Kernel, config_path: Optional[str] = None) -> List[KernelFunction]:
-    """Get the list of marketing tools for the Marketing Agent from configuration."""
-    return BaseAgent.get_tools_from_config(kernel, "marketing", config_path)
-
 class MarketingAgent(BaseAgent):
     """Marketing agent implementation using Semantic Kernel."""
 
@@ -38,7 +30,7 @@ class MarketingAgent(BaseAgent):
             config_path: Optional path to the marketing tools configuration file
         """
         # Load configuration
-        config = load_marketing_tools_config(config_path)
+        config = self.load_tools_config("marketing", config_path)
         
         super().__init__(
             agent_name=config.get("agent_name", "MarketingAgent"),
