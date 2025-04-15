@@ -15,7 +15,7 @@ from semantic_kernel.connectors.memory.azure_cosmos_db import AzureCosmosDBMemor
 
 from config_kernel import Config
 from context.cosmos_memory_kernel import CosmosMemoryContext
-from context.cosmos_memory import CosmosMemory
+
 
 
 class AgentBaseConfig:
