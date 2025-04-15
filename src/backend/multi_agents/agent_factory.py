@@ -6,11 +6,11 @@ from semantic_kernel import Kernel
 from semantic_kernel.functions import KernelFunction
 
 from models.agent_types import AgentType
-from agents_factory.agent_interface import BaseAgent
-from agents_factory.agent_config import AgentBaseConfig
+from multi_agents.agent_base import BaseAgent
+from multi_agents.agent_config import AgentBaseConfig
 
 # Import all agent implementations
-from multi_agents.hr_agent import HRAgent
+from multi_agents.hr_agent import HrAgent
 from multi_agents.human_agent import HumanAgent 
 from multi_agents.marketing_agent import MarketingAgent
 from multi_agents.generic_agent import GenericAgent
@@ -28,7 +28,7 @@ class AgentFactory:
 
     # Mapping of agent types to their implementation classes
     _agent_classes: Dict[AgentType, Type[BaseAgent]] = {
-        AgentType.HR: HRAgent,
+        AgentType.HR: HrAgent,
         AgentType.MARKETING: MarketingAgent,
         AgentType.PRODUCT: ProductAgent,
         AgentType.PROCUREMENT: ProcurementAgent,

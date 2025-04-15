@@ -13,16 +13,28 @@ import semantic_kernel as sk
 from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
 from semantic_kernel.connectors.memory.azure_cosmos_db import AzureCosmosDBMemoryStore
 
-from azure.identity.aio import ClientSecretCredential, DefaultAzureCredential
-
 from config_kernel import Config
 from context.cosmos_memory_kernel import CosmosMemoryContext
 
 
+
 class AgentBaseConfig:
     """Base configuration for agents."""
+
+    # Model deployment names
+    MODEL_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_API_DEPLOYMENT_NAME", "gpt-35-turbo")
     
-    # Use Config class to get values instead of direct environment variables
+    # API configuration
+    OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+    OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2023-12-01-preview")
+    OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+    
+    # Cosmos DB configuration
+    COSMOS_ENDPOINT = os.getenv("AZURE_COSMOS_ENDPOINT")
+    COSMOS_KEY = os.getenv("AZURE_COSMOS_KEY")
+    COSMOS_DB = os.getenv("AZURE_COSMOS_DB", "MACAE")
+    COSMOS_CONTAINER = os.getenv("AZURE_COSMOS_CONTAINER", "memory")
+
     def __init__(
         self,
         kernel: sk.Kernel,
@@ -50,16 +62,24 @@ class AgentBaseConfig:
         Returns:
             A configured semantic kernel instance
         """
-        # Use Config class to create kernel with properly configured services
-        try:
-            kernel = Config.CreateKernel()
-            return kernel
-        except Exception as e:
-            logging.error(f"Error creating kernel: {e}")
-            # Provide a fallback kernel with limited functionality
-            logging.warning("Creating kernel with limited functionality")
-            kernel = sk.Kernel()
-            return kernel
+        kernel = sk.Kernel()
+        
+        # Set up OpenAI service for the kernel
+        if cls.OPENAI_ENDPOINT and cls.OPENAI_API_KEY:
+            kernel.add_service(
+                AzureChatCompletion(
+                    service_id="azure_chat_completion",
+                    endpoint=cls.OPENAI_ENDPOINT,
+                    api_key=cls.OPENAI_API_KEY,
+                    api_version=cls.OPENAI_API_VERSION,
+                    deployment_name=cls.MODEL_DEPLOYMENT_NAME,
+                    log=logging.getLogger("semantic_kernel.kernel"),
+                )
+            )
+        else:
+            logging.warning("Azure OpenAI configuration missing. Kernel will have limited functionality.")
+        
+        return kernel
 
     @classmethod
     async def create_memory_store(cls, session_id: str, user_id: str) -> CosmosMemoryContext:
@@ -72,17 +92,13 @@ class AgentBaseConfig:
         Returns:
             A configured memory store
         """
-        # Use Config class to get credentials and connection info
-        try:
-            # Import here to avoid circular import issues
-            from context.cosmos_memory import CosmosMemory
-            
-            # Get Cosmos DB credentials and endpoints from Config
+        # Create Cosmos DB memory store if configuration is available
+        if cls.COSMOS_ENDPOINT and cls.COSMOS_KEY:
             cosmos_memory = CosmosMemory(
-                cosmos_endpoint=Config.COSMOSDB_ENDPOINT,
-                database_name=Config.COSMOSDB_DATABASE,
-                container_name=Config.COSMOSDB_CONTAINER,
-                credential=Config.GetAzureCredentials()
+                cosmos_endpoint=cls.COSMOS_ENDPOINT,
+                cosmos_key=cls.COSMOS_KEY,
+                database_name=cls.COSMOS_DB,
+                container_name=cls.COSMOS_CONTAINER
             )
             
             memory_store = CosmosMemoryContext(
@@ -92,9 +108,8 @@ class AgentBaseConfig:
             )
             
             return memory_store
-        except Exception as e:
-            logging.error(f"Error creating memory store: {e}")
-            logging.warning("Using in-memory store instead")
+        else:
+            logging.warning("Cosmos DB configuration missing. Using in-memory store instead.")
             # Create an in-memory store as fallback
             # This is useful for local development without Cosmos DB
             from context.cosmos_memory_kernel import InMemoryContext
@@ -107,10 +122,10 @@ class AgentBaseConfig:
             Dictionary with model configuration
         """
         return {
-            "deployment_name": Config.AZURE_OPENAI_DEPLOYMENT_NAME,
-            "endpoint": Config.AZURE_OPENAI_ENDPOINT,
-            "api_version": Config.AZURE_OPENAI_API_VERSION,
-            # Note: No API key here - using Azure credentials instead
+            "deployment_name": self.MODEL_DEPLOYMENT_NAME,
+            "endpoint": self.OPENAI_ENDPOINT,
+            "api_key": self.OPENAI_API_KEY,
+            "api_version": self.OPENAI_API_VERSION
         }
 
     def clone_with_session(self, session_id: str) -> 'AgentBaseConfig':
