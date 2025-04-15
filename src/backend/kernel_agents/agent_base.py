@@ -41,7 +41,6 @@ class BaseAgent:
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
         agent_type: Optional[str] = None,
-        use_azure_ai_agent: bool = True,
     ):
         """Initialize the base agent.
         
@@ -54,14 +53,12 @@ class BaseAgent:
             tools: Optional list of tools for the agent
             system_message: Optional system message for the agent
             agent_type: Optional agent type string for automatic tool loading
-            use_azure_ai_agent: Whether to use Azure AI Agent or regular function calling
         """
         self._agent_name = agent_name
         self._kernel = kernel
         self._session_id = session_id
         self._user_id = user_id
         self._memory_store = memory_store
-        self._use_azure_ai_agent = use_azure_ai_agent
         
         # If agent_type is provided, load tools from config automatically
         if agent_type and not tools:
@@ -77,23 +74,32 @@ class BaseAgent:
         self._system_message = system_message or self._default_system_message()
         self._chat_history = [{"role": "system", "content": self._system_message}]
         
-        # If using Azure AI Agent, initialize it
-        if self._use_azure_ai_agent:
-            self._agent = Config.CreateAzureAIAgent(
-                kernel=self._kernel,
-                agent_name=self._agent_name,
-                instructions=self._system_message
-            )
-            
-            # Register tools with the agent
-            for tool in self._tools:
-                self._agent.add_function(tool)
+        # The agent will be created asynchronously in the async_init method
+        self._agent = None
         
         # Log initialization
-        logging.info(f"Initialized {agent_name} with {len(self._tools)} tools, using {'Azure AI Agent' if use_azure_ai_agent else 'standard function calling'}")
+        logging.info(f"Initialized {agent_name} with {len(self._tools)} tools")
         
         # Register the handler functions
         self._register_functions()
+
+    async def async_init(self):
+        """Asynchronously initialize the agent after construction.
+        
+        This method must be called after creating the agent to complete initialization.
+        """
+        # Create Azure AI Agent instance
+        self._agent = await Config.CreateAzureAIAgent(
+            kernel=self._kernel,
+            agent_name=self._agent_name,
+            instructions=self._system_message
+        )
+        
+        # Register tools with the agent
+        for tool in self._tools:
+            self._agent.add_function(tool)
+            
+        return self
 
     def _default_system_message(self) -> str:
         """Return a default system message for this agent type."""
@@ -200,6 +206,10 @@ class BaseAgent:
         self, action_request_json: str
     ) -> str:
         """Handle an action request from another agent or the system."""
+        # Ensure the agent is initialized
+        if self._agent is None:
+            await self.async_init()
+            
         try:
             action_request = ActionRequest.parse_raw(action_request_json)
             
@@ -216,11 +226,8 @@ class BaseAgent:
                 return response.json()
             
             try:
-                # Choose execution method based on configuration
-                if self._use_azure_ai_agent:
-                    result_content = await self._execute_with_azure_ai_agent(step, action_request)
-                else:
-                    result_content = await self._execute_with_function_calling(step, action_request)
+                # Execute using Azure AI Agent
+                result_content = await self._execute_with_azure_ai_agent(step, action_request)
 
                 # Store agent message in cosmos
                 await self._memory_store.add_item(
@@ -320,6 +327,10 @@ class BaseAgent:
         Returns:
             The result content
         """
+        # Ensure the agent is initialized
+        if self._agent is None:
+            await self.async_init()
+            
         # Create chat history for the agent
         messages = []
         

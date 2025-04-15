@@ -7,7 +7,7 @@ from semantic_kernel.functions import KernelFunction
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
 from models.agent_types import AgentType
-from kernel_agents.semantic_kernel_agent import BaseAgent
+from kernel_agents.agent_base import BaseAgent
 from config_kernel import Config
 
 # Import all specialized agent implementations
@@ -163,6 +163,10 @@ class AgentFactory:
                 system_message=system_message,
                 **kwargs
             )
+            
+            # Initialize the agent asynchronously
+            await agent.async_init()
+            
         except Exception as e:
             logger.error(
                 f"Error creating agent of type {agent_type} with parameters: {e}"
@@ -241,9 +245,8 @@ class AgentFactory:
         Returns:
             A list of kernel functions for the agent
         """
-        # This would be implemented to load tool configurations from the tools directory
-        # For now, return an empty list as tools will be registered with the agent later
-        return []
+        # Use the BaseAgent's tool loading mechanism
+        return BaseAgent.get_tools_from_config(kernel, agent_type)
         
     @classmethod
     async def create_all_agents(

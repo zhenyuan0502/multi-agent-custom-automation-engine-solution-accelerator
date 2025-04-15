@@ -30,9 +30,9 @@ import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.kernel_arguments import KernelArguments
 
-# Import agent-related classes from the new multi_agents structure
+# Import agent-related classes from the kernel_agents structure
 from models.agent_types import AgentType
-from multi_agents.agent_factory import AgentFactory
+from kernel_agents.agent_factory import AgentFactory
 
 # Check if the Application Insights Instrumentation Key is set in the environment variables
 instrumentation_key = os.getenv("APPLICATIONINSIGHTS_INSTRUMENTATION_KEY")
