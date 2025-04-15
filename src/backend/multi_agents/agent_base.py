@@ -36,8 +36,9 @@ class BaseAgent(KernelBaseModel):
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
-        tools: List[KernelFunction],
-        system_message: str,
+        tools: Optional[List[KernelFunction]] = None,
+        system_message: Optional[str] = None,
+        agent_type: Optional[str] = None,
     ):
         super().__init__()
         self._agent_name = agent_name
@@ -45,11 +46,29 @@ class BaseAgent(KernelBaseModel):
         self._session_id = session_id
         self._user_id = user_id
         self._memory_store = memory_store
-        self._tools = tools
-        self._system_message = system_message
-        self._chat_history = [{"role": "system", "content": system_message}]
+        
+        # If agent_type is provided, load tools from config automatically
+        if agent_type and not tools:
+            self._tools = self.get_tools_from_config(kernel, agent_type)
+            
+            # If system_message isn't provided, try to get it from config
+            if not system_message:
+                config = self.load_tools_config(agent_type)
+                system_message = config.get("system_message", self._default_system_message())
+        else:
+            self._tools = tools or []
+        
+        self._system_message = system_message or self._default_system_message()
+        self._chat_history = [{"role": "system", "content": self._system_message}]
+        
+        # Log initialization
+        logging.info(f"Initialized {agent_name} with {len(self._tools)} tools")
         
         self._register_functions()
+
+    def _default_system_message(self) -> str:
+        """Return a default system message for this agent type."""
+        return f"You are an AI assistant named {self._agent_name}. Help the user by providing accurate and helpful information."
 
     def _register_functions(self):
         """Register this agent's functions with the kernel."""

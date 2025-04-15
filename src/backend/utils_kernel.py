@@ -129,37 +129,33 @@ async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
 
 def retrieve_all_agent_tools() -> List[Dict[str, Any]]:
     """
-    Retrieves all agent tools information from the tools configuration files.
+    Retrieves all agent tools information using the BaseAgent tool loading mechanism.
     
     Returns:
         List of dictionaries containing tool information
     """
+    from multi_agents.agent_base import BaseAgent
+    
     functions = []
     
-    # Load tool configurations from JSON files
+    # Get tool configurations using BaseAgent's loading mechanism
     try:
-        # Determine the path to the tools directory
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        tools_dir = os.path.join(current_dir, "tools")
-        
-        # Process each agent's tools
-        agent_types = ["hr", "marketing", "procurement", "product", "tech_support", "generic"]
+        # Process each agent type
+        agent_types = ["hr", "marketing", "procurement", "product", "tech_support", "generic", "planner", "human"]
         
         for agent_type in agent_types:
-            config_path = os.path.join(tools_dir, f"{agent_type}_tools.json")
-            if os.path.exists(config_path):
-                with open(config_path, "r") as f:
-                    config = json.load(f)
-                
-                agent_name = config.get("agent_name", f"{agent_type.capitalize()}Agent")
-                
-                for tool in config.get("tools", []):
-                    functions.append({
-                        "agent": agent_name,
-                        "function": tool["name"],
-                        "description": tool.get("description", ""),
-                        "parameters": str(tool.get("parameters", {}))
-                    })
+            # Use BaseAgent's configuration loading method
+            config = BaseAgent.load_tools_config(agent_type)
+            
+            agent_name = config.get("agent_name", f"{agent_type.capitalize()}Agent")
+            
+            for tool in config.get("tools", []):
+                functions.append({
+                    "agent": agent_name,
+                    "function": tool["name"],
+                    "description": tool.get("description", ""),
+                    "parameters": str(tool.get("parameters", {}))
+                })
     except Exception as e:
         logging.error(f"Error loading tool definitions: {e}")
     

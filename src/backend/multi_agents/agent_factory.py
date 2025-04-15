@@ -39,7 +39,21 @@ class AgentFactory:
         AgentType.GROUP_CHAT_MANAGER: GroupChatManager,
     }
 
-    # Mapping of agent types to functions that provide their tools
+    # Mapping of agent types to their string identifiers (for automatic tool loading)
+    _agent_type_strings: Dict[AgentType, str] = {
+        AgentType.HR: "hr",
+        AgentType.MARKETING: "marketing",
+        AgentType.PRODUCT: "product",
+        AgentType.PROCUREMENT: "procurement",
+        AgentType.TECH_SUPPORT: "tech_support",
+        AgentType.GENERIC: "generic",
+        AgentType.HUMAN: "human",
+        AgentType.PLANNER: "planner",
+        AgentType.GROUP_CHAT_MANAGER: "group_chat_manager",
+    }
+
+    # Tool getters are no longer needed as tools are loaded automatically
+    # but we keep this for backward compatibility
     _tool_getters: Dict[AgentType, Callable[[Kernel], List[KernelFunction]]] = {}
 
     # Cache of agent instances by session_id and agent_type
@@ -47,15 +61,18 @@ class AgentFactory:
 
     @classmethod
     def register_agent_class(
-        cls, agent_type: AgentType, agent_class: Type[BaseAgent]
+        cls, agent_type: AgentType, agent_class: Type[BaseAgent], agent_type_string: Optional[str] = None
     ) -> None:
         """Register a new agent class with the factory.
         
         Args:
             agent_type: The type of agent to register
             agent_class: The class to use for this agent type
+            agent_type_string: Optional string identifier for the agent type (for tool loading)
         """
         cls._agent_classes[agent_type] = agent_class
+        if agent_type_string:
+            cls._agent_type_strings[agent_type] = agent_type_string
         logger.info(
             f"Registered agent class {agent_class.__name__} for type {agent_type.value}"
         )
@@ -64,7 +81,7 @@ class AgentFactory:
     def register_tool_getter(
         cls, agent_type: AgentType, tool_getter: Callable[[Kernel], List[KernelFunction]]
     ) -> None:
-        """Register a tool getter function for an agent type.
+        """Register a tool getter function for an agent type (for backward compatibility).
         
         Args:
             agent_type: The type of agent
@@ -120,20 +137,35 @@ class AgentFactory:
             memory_store=memory_store
         )
         
-        # Get tools for this agent type
-        tools = []
+        # Get tools for this agent type (for backward compatibility)
+        tools = None
         if agent_type in cls._tool_getters:
             tools = cls._tool_getters[agent_type](kernel)
             
+        # Get the agent_type string for automatic tool loading
+        agent_type_str = cls._agent_type_strings.get(agent_type)
+            
         # Create the agent instance
         try:
-            agent = agent_class(
-                config=config,
-                tools=tools,
-                temperature=temperature,
-                system_message=system_message,
-                **kwargs
-            )
+            # Check if the agent class constructor accepts agent_type parameter
+            if hasattr(agent_class, '__init__') and 'agent_type' in agent_class.__init__.__code__.co_varnames:
+                agent = agent_class(
+                    config=config,
+                    tools=tools,
+                    temperature=temperature,
+                    system_message=system_message,
+                    agent_type=agent_type_str,
+                    **kwargs
+                )
+            else:
+                # For backward compatibility with agents that don't yet support automatic tool loading
+                agent = agent_class(
+                    config=config,
+                    tools=tools,
+                    temperature=temperature,
+                    system_message=system_message,
+                    **kwargs
+                )
         except Exception as e:
             logger.error(
                 f"Error creating agent of type {agent_type} with parameters: {e}"

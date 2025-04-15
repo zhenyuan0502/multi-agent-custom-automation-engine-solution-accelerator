@@ -32,6 +32,7 @@ from semantic_kernel.kernel_arguments import KernelArguments
 
 # Import agent-related classes from the new multi_agents structure
 from models.agent_types import AgentType
+from multi_agents.agent_factory import AgentFactory
 
 # Check if the Application Insights Instrumentation Key is set in the environment variables
 instrumentation_key = os.getenv("APPLICATIONINSIGHTS_INSTRUMENTATION_KEY")
@@ -750,7 +751,6 @@ async def delete_all_messages(request: Request) -> Dict[str, str]:
     await memory_store.delete_all_items("agent_message")
     
     # Clear the agent factory cache
-    from multi_agents.agent_factory import AgentFactory
     AgentFactory.clear_cache()
     
     return {"status": "All messages deleted"}
@@ -837,12 +837,38 @@ async def get_agent_tools():
     return retrieve_all_agent_tools()
 
 
-# Initialize tools when application starts
+# Initialize the application when it starts
 @app.on_event("startup")
 async def startup_event():
-    # Initialize tools using the new utility function
-    from utils_kernel import initialize_tools
-    await initialize_tools()
+    """Initialize the application on startup.
+    
+    This function runs when the FastAPI application starts up.
+    It sets up the agent types and tool loaders so the first request is faster.
+    """
+    # Log startup
+    logging.info("Application starting up. Initializing agent factory...")
+    
+    try:
+        # Create a temporary session and user ID to pre-initialize agents
+        # This ensures tools are loaded into the factory on startup
+        temp_session_id = "startup-session"
+        temp_user_id = "startup-user"
+        
+        # Create a test agent to initialize the tool loading system
+        # This will pre-load tool configurations into memory
+        test_agent = await AgentFactory.create_agent(
+            agent_type=AgentType.GENERIC,
+            session_id=temp_session_id,
+            user_id=temp_user_id
+        )
+        
+        # Clean up initialization resources
+        AgentFactory.clear_cache(temp_session_id)
+        logging.info("Agent factory successfully initialized")
+        
+    except Exception as e:
+        logging.error(f"Error initializing agent factory: {e}")
+        # Don't fail startup, but log the error
 
 
 # Run the app

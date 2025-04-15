@@ -43,7 +43,7 @@ class PlannerAgent(BaseAgent):
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,
-            tools=[],  # Planner doesn't need tools like other agents
+            agent_type="planner",  # Use agent_type to automatically load tools
             system_message="""
             You are a planner agent. Your role is to create a step-by-step plan to accomplish a user's goal.
             Each step should be clear, actionable, and assigned to the appropriate specialized agent.
