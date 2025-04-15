@@ -149,32 +149,21 @@ async def retrieve_all_agent_tools() -> List[Dict[str, Any]]:
             temperature=0.7
         )
         
-        # Map of agent types to friendly names for display
-        agent_display_names = {
-            AgentTypeEnum.HR: "HR Agent",
-            AgentTypeEnum.MARKETING: "Marketing Agent",
-            AgentTypeEnum.PRODUCT: "Product Agent",
-            AgentTypeEnum.PROCUREMENT: "Procurement Agent",
-            AgentTypeEnum.TECH_SUPPORT: "Tech Support Agent",
-            AgentTypeEnum.GENERIC: "Generic Agent",
-            AgentTypeEnum.HUMAN: "Human Agent",
-            AgentTypeEnum.PLANNER: "Planner Agent",
-            AgentTypeEnum.GROUP_CHAT_MANAGER: "Group Chat Manager"
-        }
-        
         # Process each agent's tools
         for agent_type, agent in agents.items():
             # Skip agents without tools attribute
             if not hasattr(agent, '_tools') or agent._tools is None:
                 continue
                 
-            agent_name = agent_display_names.get(agent_type, str(agent_type))
+            # Get display name from enum value (e.g., "hr_agent" -> "HR Agent")
+            # Convert snake_case to Title Case with spaces
+            display_name = agent_type.value.replace('_', ' ').title()
             
             # Extract tool information from the agent
             for tool in agent._tools:
                 # Inspect the tool to extract properties
                 tool_info = {
-                    "agent": agent_name,
+                    "agent": display_name,
                     "function": tool.name,
                     "description": tool.description if hasattr(tool, 'description') else "",
                     "parameters": str(tool.metadata.get("parameters", {})) if hasattr(tool, 'metadata') else "{}"
