@@ -34,7 +34,10 @@ class GenericAgent(BaseAgent):
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
-        generic_tools: List[KernelFunction],
+        tools: List[KernelFunction] = None,
+        agent_name: str = "GenericAgent",
+        system_message: str = None,
+        **kwargs
     ) -> None:
         """Initialize the Generic Agent.
         
@@ -43,14 +46,19 @@ class GenericAgent(BaseAgent):
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
-            generic_tools: List of tools available to this agent
+            tools: List of tools available to this agent
+            agent_name: The name of the agent
+            system_message: The system message for this agent
+            **kwargs: Additional arguments
         """
+        default_system_message = "You are a generic agent. You are used to handle generic tasks that a general Large Language Model can assist with. You are being called as a fallback, when no other agents are able to use their specialised functions in order to solve the user's task. Summarize back the user what was done. Do not use any function calling- just use your native LLM response."
+        
         super().__init__(
-            agent_name="GenericAgent",
+            agent_name=agent_name,
             kernel=kernel,
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,
-            tools=generic_tools,
-            system_message="You are a generic agent. You are used to handle generic tasks that a general Large Language Model can assist with. You are being called as a fallback, when no other agents are able to use their specialised functions in order to solve the user's task. Summarize back the user what was done. Do not use any function calling- just use your native LLM response."
+            tools=tools or [],
+            system_message=system_message or default_system_message
         )

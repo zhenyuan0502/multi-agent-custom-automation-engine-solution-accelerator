@@ -1,0 +1,24 @@
+{
+  "tools": [
+    {
+      "name": "search",
+      "description": "Performs a search for information",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "The search query"
+        }
+      }
+    },
+    {
+      "name": "calculator",
+      "description": "Performs mathematical calculations",
+      "parameters": {
+        "expression": {
+          "type": "string",
+          "description": "The mathematical expression to calculate"
+        }
+      }
+    }
+  ]
+}

@@ -13,10 +13,11 @@ from semantic_kernel.contents import ChatMessageContent, ChatHistory, AuthorRole
 
 from config_kernel import Config
 from models.messages_kernel import BaseDataModel, Plan, Session, Step, AgentMessage
+from context.in_memory_context import InMemoryContext
 
 
 class CosmosMemoryContext(MemoryStoreBase):
-    """A buffered chat completion context that also saves messages and data models to Cosmos DB."""
+    """A buffered chat completion context that also saves messages and data models to Cosmos DB or in-memory fallback."""
 
     MODEL_CLASS_MAPPING = {
         "session": Session,
@@ -41,20 +42,60 @@ class CosmosMemoryContext(MemoryStoreBase):
         self.session_id = session_id
         self.user_id = user_id
         self._initialized = asyncio.Event()
+        self._in_memory_context = None
+        
         # Auto-initialize the container
         asyncio.create_task(self.initialize())
 
     async def initialize(self):
-        # Create container if it does not exist
-        self._container = await self._database.create_container_if_not_exists(
-            id=self._cosmos_container,
-            partition_key=PartitionKey(path="/session_id"),
-        )
+        """Initialize the memory context - either using CosmosDB or in-memory alternative."""
+        try:
+            if self._database is not None:
+                # Try to use real CosmosDB
+                self._container = await self._database.create_container_if_not_exists(
+                    id=self._cosmos_container,
+                    partition_key=PartitionKey(path="/session_id"),
+                )
+                logging.info("Successfully connected to CosmosDB")
+            else:
+                # Use in-memory alternative
+                self._in_memory_context = InMemoryContext(
+                    session_id=self.session_id,
+                    user_id=self.user_id,
+                    buffer_size=self._buffer_size,
+                    initial_messages=self._messages
+                )
+                logging.info("Using InMemoryContext as fallback")
+        except Exception as e:
+            logging.warning(f"Failed to initialize CosmosDB container: {e}. Using InMemoryContext as fallback.")
+            self._in_memory_context = InMemoryContext(
+                session_id=self.session_id,
+                user_id=self.user_id,
+                buffer_size=self._buffer_size,
+                initial_messages=self._messages
+            )
+        
         self._initialized.set()
+
+    # Helper method to delegate to in-memory context if needed
+    async def _delegate(self, method_name, *args, **kwargs):
+        """Delegate a method call to in-memory context if CosmosDB is not available."""
+        await self._initialized.wait()
+        
+        if self._in_memory_context is not None:
+            method = getattr(self._in_memory_context, method_name)
+            return await method(*args, **kwargs)
+        
+        # If we reach here, we're using CosmosDB
+        return None
 
     async def add_item(self, item: BaseDataModel) -> None:
         """Add a data model item to Cosmos DB."""
         await self._initialized.wait()
+        if self._in_memory_context:
+            await self._delegate("add_item", item)
+            return
+
         try:
             document = item.model_dump()
             await self._container.create_item(body=document)
@@ -65,6 +106,10 @@ class CosmosMemoryContext(MemoryStoreBase):
     async def update_item(self, item: BaseDataModel) -> None:
         """Update an existing item in Cosmos DB."""
         await self._initialized.wait()
+        if self._in_memory_context:
+            await self._delegate("update_item", item)
+            return
+
         try:
             document = item.model_dump()
             await self._container.upsert_item(body=document)
@@ -76,6 +121,9 @@ class CosmosMemoryContext(MemoryStoreBase):
     ) -> Optional[BaseDataModel]:
         """Retrieve an item by its ID and partition key."""
         await self._initialized.wait()
+        if self._in_memory_context:
+            return await self._delegate("get_item_by_id", item_id, partition_key, model_class)
+
         try:
             item = await self._container.read_item(
                 item=item_id, partition_key=partition_key
@@ -93,6 +141,9 @@ class CosmosMemoryContext(MemoryStoreBase):
     ) -> List[BaseDataModel]:
         """Query items from Cosmos DB and return a list of model instances."""
         await self._initialized.wait()
+        if self._in_memory_context:
+            return await self._delegate("query_items", query, parameters, model_class)
+
         try:
             items = self._container.query_items(query=query, parameters=parameters)
             result_list = []
@@ -244,6 +295,10 @@ class CosmosMemoryContext(MemoryStoreBase):
     async def add_message(self, message: ChatMessageContent) -> None:
         """Add a message to the memory and save to Cosmos DB."""
         await self._initialized.wait()
+        if self._in_memory_context:
+            await self._delegate("add_message", message)
+            return
+
         if self._container is None:
             return
 
@@ -272,6 +327,9 @@ class CosmosMemoryContext(MemoryStoreBase):
     async def get_messages(self) -> List[ChatMessageContent]:
         """Get recent messages for the session."""
         await self._initialized.wait()
+        if self._in_memory_context:
+            return await self._delegate("get_messages")
+
         if self._container is None:
             return []
 

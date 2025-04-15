@@ -1,7 +1,7 @@
 # config_kernel.py
 import os
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 
 # Import Semantic Kernel and Azure AI Agent
 from semantic_kernel import Kernel
@@ -16,8 +16,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def GetRequiredConfig(name):
-    return os.environ[name]
+def GetRequiredConfig(name, default=None):
+    if name in os.environ:
+        return os.environ[name]
+    if default is not None:
+        logging.warning(f"Environment variable {name} not found, using default value")
+        return default
+    raise ValueError(f"Environment variable {name} not found and no default provided")
 
 
 def GetOptionalConfig(name, default=""):
@@ -31,17 +36,18 @@ def GetBoolConfig(name):
 
 
 class Config:
+    # Try to get required config with defaults to allow local development
     AZURE_TENANT_ID = GetOptionalConfig("AZURE_TENANT_ID")
     AZURE_CLIENT_ID = GetOptionalConfig("AZURE_CLIENT_ID")
     AZURE_CLIENT_SECRET = GetOptionalConfig("AZURE_CLIENT_SECRET")
 
-    COSMOSDB_ENDPOINT = GetRequiredConfig("COSMOSDB_ENDPOINT")
-    COSMOSDB_DATABASE = GetRequiredConfig("COSMOSDB_DATABASE")
-    COSMOSDB_CONTAINER = GetRequiredConfig("COSMOSDB_CONTAINER")
+    COSMOSDB_ENDPOINT = GetOptionalConfig("COSMOSDB_ENDPOINT", "https://localhost:8081")
+    COSMOSDB_DATABASE = GetOptionalConfig("COSMOSDB_DATABASE", "macae-database")
+    COSMOSDB_CONTAINER = GetOptionalConfig("COSMOSDB_CONTAINER", "macae-container")
 
-    AZURE_OPENAI_DEPLOYMENT_NAME = GetRequiredConfig("AZURE_OPENAI_DEPLOYMENT_NAME")
-    AZURE_OPENAI_API_VERSION = GetRequiredConfig("AZURE_OPENAI_API_VERSION")
-    AZURE_OPENAI_ENDPOINT = GetRequiredConfig("AZURE_OPENAI_ENDPOINT")
+    AZURE_OPENAI_DEPLOYMENT_NAME = GetRequiredConfig("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-35-turbo")
+    AZURE_OPENAI_API_VERSION = GetRequiredConfig("AZURE_OPENAI_API_VERSION", "2023-12-01-preview")
+    AZURE_OPENAI_ENDPOINT = GetRequiredConfig("AZURE_OPENAI_ENDPOINT", "https://api.openai.com/v1")
     
     # Azure OpenAI scopes for token-based authentication
     AZURE_OPENAI_SCOPES = [f"{GetOptionalConfig('AZURE_OPENAI_SCOPE', 'https://cognitiveservices.azure.com/.default')}"]
@@ -50,10 +56,16 @@ class Config:
         "FRONTEND_SITE_NAME", "http://127.0.0.1:3000"
     )
 
+    # Flag to indicate if we should use in-memory storage instead of CosmosDB
+    USE_IN_MEMORY_STORAGE = GetBoolConfig("USE_IN_MEMORY_STORAGE") or True
+
     __azure_credentials = None
     __comos_client = None
     __cosmos_database = None
     __azure_ai_agent_config = None
+
+    # Cache for in-memory storage contexts
+    __in_memory_contexts = {}
 
     @staticmethod
     def GetAzureCredentials():
@@ -67,27 +79,43 @@ class Config:
             return Config.__azure_credentials
 
         # Always use DefaultAzureCredential
-        Config.__azure_credentials = DefaultAzureCredential()
-        return Config.__azure_credentials
+        try:
+            Config.__azure_credentials = DefaultAzureCredential()
+            return Config.__azure_credentials
+        except Exception as e:
+            logging.warning(f"Failed to create DefaultAzureCredential: {e}")
+            return None
 
     @staticmethod
     def GetCosmosDatabaseClient():
-        """Get a Cosmos DB client for the configured database.
+        """Get a Cosmos DB client for the configured database or in-memory alternative.
         
         Returns:
-            A Cosmos DB database client
+            A Cosmos DB database client or in-memory alternative
         """
-        if Config.__comos_client is None:
-            Config.__comos_client = CosmosClient(
-                Config.COSMOSDB_ENDPOINT, credential=Config.GetAzureCredentials()
-            )
+        # If we're using in-memory storage, return None so the CosmosMemoryContext will create an in-memory context
+        if Config.USE_IN_MEMORY_STORAGE:
+            from context.in_memory_context import InMemoryContext
+            logging.info("Using in-memory storage instead of CosmosDB")
+            return None
 
-        if Config.__cosmos_database is None:
-            Config.__cosmos_database = Config.__comos_client.get_database_client(
-                Config.COSMOSDB_DATABASE
-            )
+        # Try to connect to real CosmosDB
+        try:
+            if Config.__comos_client is None:
+                Config.__comos_client = CosmosClient(
+                    Config.COSMOSDB_ENDPOINT, credential=Config.GetAzureCredentials()
+                )
 
-        return Config.__cosmos_database
+            if Config.__cosmos_database is None:
+                Config.__cosmos_database = Config.__comos_client.get_database_client(
+                    Config.COSMOSDB_DATABASE
+                )
+
+            return Config.__cosmos_database
+        except Exception as e:
+            logging.warning(f"Failed to create CosmosDB client: {e}. Using in-memory storage instead.")
+            Config.USE_IN_MEMORY_STORAGE = True
+            return None
 
     @staticmethod
     def GetTokenProvider(scopes):
@@ -99,7 +127,10 @@ class Config:
         Returns:
             A bearer token provider
         """
-        return get_bearer_token_provider(Config.GetAzureCredentials(), scopes)
+        credentials = Config.GetAzureCredentials()
+        if credentials is None:
+            return None
+        return get_bearer_token_provider(credentials, scopes)
 
     @staticmethod
     async def GetAzureOpenAIToken() -> Optional[str]:
@@ -110,6 +141,9 @@ class Config:
         """
         try:
             credential = Config.GetAzureCredentials()
+            if credential is None:
+                logging.warning("No Azure credentials available")
+                return None
             token = await credential.get_token(*Config.AZURE_OPENAI_SCOPES)
             return token.token
         except Exception as e:
@@ -143,19 +177,35 @@ class Config:
         """
         # Get token for authentication
         token = await Config.GetAzureOpenAIToken()
-        if not token:
-            raise ValueError("Failed to obtain Azure OpenAI authentication token")
-            
-        # Create the Azure AI Agent
-        agent = await AzureAIAgent.create_async(
-            kernel=kernel,
-            deployment_name=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
-            endpoint=Config.AZURE_OPENAI_ENDPOINT,
-            api_version=Config.AZURE_OPENAI_API_VERSION,
-            token=token,  # Use token for authentication
-            agent_type=agent_type,
-            agent_name=agent_name,
-            system_prompt=instructions,
-        )
         
-        return agent
+        try:
+            # Create the Azure AI Agent (with token if available)
+            if token:
+                agent = await AzureAIAgent.create_async(
+                    kernel=kernel,
+                    deployment_name=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                    endpoint=Config.AZURE_OPENAI_ENDPOINT,
+                    api_version=Config.AZURE_OPENAI_API_VERSION,
+                    token=token,
+                    agent_type=agent_type,
+                    agent_name=agent_name,
+                    system_prompt=instructions,
+                )
+            else:
+                # Use API key if token is not available
+                api_key = GetOptionalConfig("AZURE_OPENAI_API_KEY", "sk-...")
+                agent = await AzureAIAgent.create_async(
+                    kernel=kernel,
+                    deployment_name=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                    endpoint=Config.AZURE_OPENAI_ENDPOINT,
+                    api_key=api_key,
+                    api_version=Config.AZURE_OPENAI_API_VERSION,
+                    agent_type=agent_type,
+                    agent_name=agent_name,
+                    system_prompt=instructions,
+                )
+            
+            return agent
+        except Exception as e:
+            logging.error(f"Failed to create Azure AI Agent: {e}")
+            raise
