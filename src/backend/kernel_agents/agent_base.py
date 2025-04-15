@@ -1,18 +1,12 @@
 import logging
 import json
 import os
-from typing import Any, Dict, List, Mapping, Optional, Callable, Awaitable, Union
+from typing import Any, Dict, List, Mapping, Optional, Callable, Awaitable
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.kernel_arguments import KernelArguments
-# Import core components needed for Semantic Kernel plugins
-from semantic_kernel.plugin_definition import kernel_function, kernel_function_context_parameter
-# Import Azure AI Agent
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
-
-# Import Pydantic model base
-from semantic_kernel.kernel_pydantic import KernelBaseModel
 
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (

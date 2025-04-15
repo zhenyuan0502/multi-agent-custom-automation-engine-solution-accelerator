@@ -102,7 +102,7 @@ class AgentFactory:
         agent_type: AgentType,
         session_id: str,
         user_id: str,
-        temperature: float = 0.7,
+        temperature: float = 0.0,
         system_message: Optional[str] = None,
         **kwargs
     ) -> BaseAgent:
@@ -253,7 +253,7 @@ class AgentFactory:
         cls,
         session_id: str,
         user_id: str,
-        temperature: float = 0.7
+        temperature: float = 0.0
     ) -> Dict[AgentType, BaseAgent]:
         """Create all agent types for a session.
         

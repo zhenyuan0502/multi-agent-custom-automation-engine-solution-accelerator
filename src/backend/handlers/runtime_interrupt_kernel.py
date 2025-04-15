@@ -1,8 +1,7 @@
 from typing import Any, Dict, List, Optional
+
 import semantic_kernel as sk
 from semantic_kernel.kernel_arguments import KernelArguments
-
-# Import directly from the Kernel base model class for our handlers
 from semantic_kernel.kernel_pydantic import KernelBaseModel
 
 # Define message classes directly in this file since the imports are problematic

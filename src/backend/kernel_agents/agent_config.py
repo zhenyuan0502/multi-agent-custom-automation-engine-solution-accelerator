@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 import semantic_kernel as sk
 from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
 from semantic_kernel.connectors.memory.azure_cosmos_db import AzureCosmosDBMemoryStore
-
+from context.cosmos_memory_kernel import InMemoryContext
 from config_kernel import Config
 from context.cosmos_memory_kernel import CosmosMemoryContext
 
@@ -112,7 +112,6 @@ class AgentBaseConfig:
             logging.warning("Cosmos DB configuration missing. Using in-memory store instead.")
             # Create an in-memory store as fallback
             # This is useful for local development without Cosmos DB
-            from context.cosmos_memory_kernel import InMemoryContext
             return InMemoryContext(session_id, user_id)
 
     def get_model_config(self) -> Dict[str, Any]:

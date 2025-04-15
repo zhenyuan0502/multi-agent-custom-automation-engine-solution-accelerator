@@ -1,6 +1,5 @@
 fastapi
 uvicorn
-autogen-agentchat==0.4.0dev1
 azure-cosmos
 azure-monitor-opentelemetry
 azure-monitor-events-extension
@@ -13,12 +12,9 @@ opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-openai
 opentelemetry-exporter-otlp-proto-http
-opentelemetry-exporter-otlp-proto-grpc
 semantic-kernel
 azure-ai-projects 
-azure-identity 
 openai 
 azure-ai-inference 
 azure-search-documents 
-azure-ai-evaluation 
-azure-monitor-opentelemetry
+azure-ai-evaluation

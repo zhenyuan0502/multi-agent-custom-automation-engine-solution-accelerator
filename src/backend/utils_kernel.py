@@ -68,7 +68,7 @@ async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
     raw_agents = await AgentFactory.create_all_agents(
         session_id=session_id,
         user_id=user_id,
-        temperature=0.7  # Default temperature
+        temperature=0.0  # Default temperature
     )
     
     # Convert to the agent name dictionary format used by the rest of the app
@@ -266,7 +266,7 @@ async def rai_success(description: str) -> bool:
                 },
                 {"role": "user", "content": description},
             ],
-            "temperature": 0.7,
+            "temperature": 0.0,
             "top_p": 0.95,
             "max_tokens": 800,
         }

@@ -11,7 +11,7 @@ from semantic_kernel.memory.memory_record import MemoryRecord
 from semantic_kernel.memory.memory_store_base import MemoryStoreBase
 from semantic_kernel.contents import ChatMessageContent, ChatHistory, AuthorRole
 
-from config import Config
+from config_kernel import Config
 from models.messages_kernel import BaseDataModel, Plan, Session, Step, AgentMessage
 
 

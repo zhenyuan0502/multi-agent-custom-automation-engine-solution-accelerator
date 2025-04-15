@@ -5,10 +5,21 @@ import os
 import uuid
 from typing import List, Dict, Optional, Any
 
+# FastAPI imports
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+
+# Azure monitoring
+from azure.monitor.opentelemetry import configure_azure_monitor
+
+# Semantic Kernel imports
+import semantic_kernel as sk
+from semantic_kernel.kernel_arguments import KernelArguments
+
+# Local imports
 from middleware.health_check import HealthCheckMiddleware
 from auth.auth_utils import get_authenticated_user_details
-from config import Config
+from config_kernel import Config
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
     HumanFeedback,
@@ -23,14 +34,6 @@ from models.messages_kernel import (
 )
 from utils_kernel import initialize_runtime_and_context, get_agents, retrieve_all_agent_tools, rai_success
 from event_utils import track_event_if_configured
-from fastapi.middleware.cors import CORSMiddleware
-from azure.monitor.opentelemetry import configure_azure_monitor
-
-import semantic_kernel as sk
-from semantic_kernel.functions import KernelFunction
-from semantic_kernel.kernel_arguments import KernelArguments
-
-# Import agent-related classes from the kernel_agents structure
 from models.agent_types import AgentType
 from kernel_agents.agent_factory import AgentFactory
 
