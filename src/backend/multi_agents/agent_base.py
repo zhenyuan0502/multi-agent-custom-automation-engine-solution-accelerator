@@ -6,8 +6,7 @@ from semantic_kernel.functions import KernelFunction
 from semantic_kernel.kernel_arguments import KernelArguments
 # Import core components needed for Semantic Kernel plugins
 from semantic_kernel.plugin_definition import kernel_function, kernel_function_context_parameter
-# For backward compatibility with older versions
-from semantic_kernel.plugin_definition import sk_function, sk_function_context_parameter
+
 
 # Import Pydantic model base
 from semantic_kernel.kernel_pydantic import KernelBaseModel
