@@ -1,19 +1,21 @@
-# cosmos_memory.py
+# cosmos_memory_kernel.py
 
 import asyncio
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type, Tuple
+import numpy as np
 
 from azure.cosmos.partition_key import PartitionKey
-from microsoft.semantickernel.memory import MemoryStore, Memory
-from microsoft.semantickernel.ai.chat_completion import ChatMessage, ChatHistory, ChatRole
+from semantic_kernel.memory.memory_record import MemoryRecord
+from semantic_kernel.memory.memory_store_base import MemoryStoreBase
+from semantic_kernel.contents import ChatMessageContent, ChatHistory, AuthorRole
 
 from config import Config
-from models.messages import BaseDataModel, Plan, Session, Step, AgentMessage
+from models.messages_kernel import BaseDataModel, Plan, Session, Step, AgentMessage
 
 
-class CosmosBufferedMemoryStore(MemoryStore):
+class CosmosMemoryContext(MemoryStoreBase):
     """A buffered chat completion context that also saves messages and data models to Cosmos DB."""
 
     MODEL_CLASS_MAPPING = {
@@ -29,7 +31,7 @@ class CosmosBufferedMemoryStore(MemoryStore):
         session_id: str,
         user_id: str,
         buffer_size: int = 100,
-        initial_messages: Optional[List[ChatMessage]] = None,
+        initial_messages: Optional[List[ChatMessageContent]] = None,
     ) -> None:
         self._buffer_size = buffer_size
         self._messages = initial_messages or []
@@ -189,7 +191,7 @@ class CosmosBufferedMemoryStore(MemoryStore):
 
     # Methods for messages - adapted for Semantic Kernel
 
-    async def add_message(self, message: ChatMessage) -> None:
+    async def add_message(self, message: ChatMessageContent) -> None:
         """Add a message to the memory and save to Cosmos DB."""
         await self._initialized.wait()
         if self._container is None:
@@ -216,7 +218,7 @@ class CosmosBufferedMemoryStore(MemoryStore):
         except Exception as e:
             logging.exception(f"Failed to add message to Cosmos DB: {e}")
 
-    async def get_messages(self) -> List[ChatMessage]:
+    async def get_messages(self) -> List[ChatMessageContent]:
         """Get recent messages for the session."""
         await self._initialized.wait()
         if self._container is None:
@@ -242,15 +244,15 @@ class CosmosBufferedMemoryStore(MemoryStore):
             async for item in items:
                 content = item.get("content", {})
                 role = content.get("role", "user")
-                chat_role = ChatRole.ASSISTANT
+                chat_role = AuthorRole.ASSISTANT
                 if role == "user":
-                    chat_role = ChatRole.USER
+                    chat_role = AuthorRole.USER
                 elif role == "system":
-                    chat_role = ChatRole.SYSTEM
+                    chat_role = AuthorRole.SYSTEM
                 elif role == "tool":  # Equivalent to FunctionExecutionResultMessage
-                    chat_role = ChatRole.TOOL
+                    chat_role = AuthorRole.TOOL
                 
-                message = ChatMessage(
+                message = ChatMessageContent(
                     role=chat_role,
                     content=content.get("content", ""),
                     metadata=content.get("metadata", {})
@@ -277,7 +279,7 @@ class CosmosBufferedMemoryStore(MemoryStore):
     
     # MemoryStore interface methods
     
-    async def upsert_memory_record(self, collection: str, record: Memory) -> str:
+    async def upsert_memory_record(self, collection: str, record: MemoryRecord) -> str:
         """Implement MemoryStore interface - store a memory record."""
         memory_dict = {
             "id": record.id or str(uuid.uuid4()),
@@ -295,7 +297,7 @@ class CosmosBufferedMemoryStore(MemoryStore):
         await self._container.upsert_item(body=memory_dict)
         return memory_dict["id"]
     
-    async def get_memory_record(self, collection: str, key: str, with_embedding: bool = False) -> Optional[Memory]:
+    async def get_memory_record(self, collection: str, key: str, with_embedding: bool = False) -> Optional[MemoryRecord]:
         """Implement MemoryStore interface - retrieve a memory record."""
         query = """
             SELECT * FROM c 
@@ -310,13 +312,13 @@ class CosmosBufferedMemoryStore(MemoryStore):
         
         items = self._container.query_items(query=query, parameters=parameters)
         async for item in items:
-            return Memory(
+            return MemoryRecord(
                 id=item["id"],
                 text=item["text"],
                 description=item["description"],
                 external_source_name=item["external_source_name"],
                 additional_metadata=item["additional_metadata"],
-                embedding=item["embedding"] if with_embedding and "embedding" in item else None,
+                embedding=np.array(item["embedding"]) if with_embedding and "embedding" in item else None,
                 key=item["key"]
             )
         return None
@@ -424,3 +426,126 @@ class CosmosBufferedMemoryStore(MemoryStore):
 
     def __del__(self):
         asyncio.create_task(self.close())
+
+    # Additional required MemoryStoreBase methods
+    
+    async def create_collection(self, collection_name: str) -> None:
+        """Create a new collection. For CosmosDB, we don't need to create new collections
+        as everything is stored in the same container with type identifiers."""
+        await self._initialized.wait()
+        # No-op for CosmosDB implementation - we use the data_type field instead
+        pass
+
+    async def get_collections(self) -> List[str]:
+        """Get all collections."""
+        await self._initialized.wait()
+        
+        try:
+            query = """
+                SELECT DISTINCT c.collection 
+                FROM c 
+                WHERE c.data_type = 'memory' AND c.session_id = @session_id
+            """
+            parameters = [{"name": "@session_id", "value": self.session_id}]
+            
+            items = self._container.query_items(query=query, parameters=parameters)
+            collections = []
+            async for item in items:
+                if "collection" in item and item["collection"] not in collections:
+                    collections.append(item["collection"])
+            return collections
+        except Exception as e:
+            logging.exception(f"Failed to get collections from Cosmos DB: {e}")
+            return []
+
+    async def does_collection_exist(self, collection_name: str) -> bool:
+        """Check if a collection exists."""
+        collections = await self.get_collections()
+        return collection_name in collections
+
+    async def delete_collection(self, collection_name: str) -> None:
+        """Delete a collection."""
+        await self._initialized.wait()
+        
+        try:
+            query = """
+                SELECT c.id, c.session_id
+                FROM c
+                WHERE c.collection = @collection AND c.data_type = 'memory' AND c.session_id = @session_id
+            """
+            parameters = [
+                {"name": "@collection", "value": collection_name},
+                {"name": "@session_id", "value": self.session_id}
+            ]
+            
+            items = self._container.query_items(query=query, parameters=parameters)
+            async for item in items:
+                await self._container.delete_item(
+                    item=item["id"],
+                    partition_key=item["session_id"]
+                )
+        except Exception as e:
+            logging.exception(f"Failed to delete collection from Cosmos DB: {e}")
+
+    async def upsert_async(self, collection_name: str, record: Dict[str, Any]) -> str:
+        """Helper method to insert documents directly."""
+        await self._initialized.wait()
+        
+        try:
+            # Make sure record has the session_id for partitioning
+            if "session_id" not in record:
+                record["session_id"] = self.session_id
+                
+            # Ensure record has an ID
+            if "id" not in record:
+                record["id"] = str(uuid.uuid4())
+                
+            await self._container.upsert_item(body=record)
+            return record["id"]
+        except Exception as e:
+            logging.exception(f"Failed to upsert item to Cosmos DB: {e}")
+            return ""
+            
+    async def get_memory_records(
+        self, collection: str, limit: int = 1000, with_embeddings: bool = False
+    ) -> List[MemoryRecord]:
+        """Get memory records from a collection."""
+        await self._initialized.wait()
+        
+        try:
+            query = """
+                SELECT *
+                FROM c
+                WHERE c.collection = @collection 
+                AND c.data_type = 'memory'
+                AND c.session_id = @session_id
+                ORDER BY c._ts DESC
+                OFFSET 0 LIMIT @limit
+            """
+            parameters = [
+                {"name": "@collection", "value": collection},
+                {"name": "@session_id", "value": self.session_id},
+                {"name": "@limit", "value": limit}
+            ]
+            
+            items = self._container.query_items(query=query, parameters=parameters)
+            records = []
+            async for item in items:
+                embedding = None
+                if with_embeddings and "embedding" in item and item["embedding"]:
+                    embedding = np.array(item["embedding"])
+                    
+                record = MemoryRecord(
+                    id=item["id"],
+                    key=item.get("key", ""),
+                    text=item.get("text", ""),
+                    embedding=embedding,
+                    description=item.get("description", ""),
+                    additional_metadata=item.get("additional_metadata", ""),
+                    external_source_name=item.get("external_source_name", "")
+                )
+                records.append(record)
+            return records
+        except Exception as e:
+            logging.exception(f"Failed to get memory records from Cosmos DB: {e}")
+            return []

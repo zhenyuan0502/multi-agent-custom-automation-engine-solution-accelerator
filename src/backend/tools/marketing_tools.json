@@ -1,0 +1,226 @@
+{
+  "agent_name": "MarketingAgent",
+  "system_message": "You are a Marketing agent. You specialize in marketing strategy, campaign development, content creation, and market analysis. You help create effective marketing campaigns, analyze market data, and develop promotional content for products and services.",
+  "tools": [
+    {
+      "name": "create_marketing_campaign",
+      "description": "Create a new marketing campaign with specified name, target audience, and goals.",
+      "parameters": [
+        {
+          "name": "campaign_name",
+          "description": "The name of the marketing campaign",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "target_audience",
+          "description": "The target audience for the campaign",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "goals",
+          "description": "The goals of the marketing campaign",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Marketing Campaign Created\n**Campaign Name:** {campaign_name}\n**Target Audience:** {target_audience}\n**Campaign Goals:** {goals}\n\nThe marketing campaign has been successfully created and is ready for implementation."
+    },
+    {
+      "name": "analyze_customer_demographics",
+      "description": "Analyze customer demographics for a specific market segment.",
+      "parameters": [
+        {
+          "name": "market_segment",
+          "description": "The market segment to analyze",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Customer Demographics Analysis\n**Market Segment:** {market_segment}\n\nAnalysis of customer demographics for {market_segment} has been completed.\nKey insights include typical age ranges, income levels, buying preferences, and behavioral patterns."
+    },
+    {
+      "name": "develop_content_strategy",
+      "description": "Develop a content strategy for specific content type and target platforms.",
+      "parameters": [
+        {
+          "name": "content_type",
+          "description": "The type of content to develop",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "target_platforms",
+          "description": "The target platforms for the content",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Content Strategy Developed\n**Content Type:** {content_type}\n**Target Platforms:** {target_platforms}\n\nA comprehensive content strategy has been developed, outlining content creation, distribution, and promotion plans."
+    },
+    {
+      "name": "create_social_media_post",
+      "description": "Create a social media post for a specific platform with content and hashtags.",
+      "parameters": [
+        {
+          "name": "platform",
+          "description": "The social media platform",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "content",
+          "description": "The content of the post",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "hashtags",
+          "description": "The hashtags for the post",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Social Media Post Created\n**Platform:** {platform}\n**Content:** {content}\n**Hashtags:** {hashtags}\n\nA social media post has been created and is ready for publication."
+    },
+    {
+      "name": "plan_product_launch",
+      "description": "Plan a product launch with specified name, date, and key features.",
+      "parameters": [
+        {
+          "name": "product_name",
+          "description": "The name of the product",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "launch_date",
+          "description": "The date of the product launch",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "key_features",
+          "description": "The key features of the product",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Product Launch Planned\n**Product Name:** {product_name}\n**Launch Date:** {launch_date}\n**Key Features:** {key_features}\n\nA product launch plan has been created, including marketing activities, PR efforts, and promotional events."
+    },
+    {
+      "name": "generate_marketing_copy",
+      "description": "Generate marketing copy for a product tailored to a specific audience.",
+      "parameters": [
+        {
+          "name": "product_name",
+          "description": "The name of the product",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "target_audience",
+          "description": "The target audience for the copy",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "key_selling_points",
+          "description": "The key selling points of the product",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Marketing Copy Generated\n**Product Name:** {product_name}\n**Target Audience:** {target_audience}\n**Key Selling Points:** {key_selling_points}\n\nCompelling marketing copy has been generated that effectively communicates the product's value proposition."
+    },
+    {
+      "name": "analyze_campaign_performance",
+      "description": "Analyze the performance of a marketing campaign based on specified metrics.",
+      "parameters": [
+        {
+          "name": "campaign_name",
+          "description": "The name of the campaign",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "metrics",
+          "description": "The metrics to analyze",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Campaign Performance Analysis\n**Campaign Name:** {campaign_name}\n**Metrics:** {metrics}\n\nCampaign performance analysis has been completed, providing insights into effectiveness and ROI."
+    },
+    {
+      "name": "conduct_market_research",
+      "description": "Conduct market research on a specific topic using a specified research method.",
+      "parameters": [
+        {
+          "name": "research_topic",
+          "description": "The topic of the research",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "research_method",
+          "description": "The method of the research",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Market Research Conducted\n**Research Topic:** {research_topic}\n**Research Method:** {research_method}\n\nMarket research has been conducted, yielding valuable insights for decision making."
+    },
+    {
+      "name": "create_email_campaign",
+      "description": "Create an email campaign with specified name, subject, and content.",
+      "parameters": [
+        {
+          "name": "campaign_name",
+          "description": "The name of the campaign",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "email_subject",
+          "description": "The subject of the email",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "email_content",
+          "description": "The content of the email",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Email Campaign Created\n**Campaign Name:** {campaign_name}\n**Email Subject:** {email_subject}\n**Email Content:** {email_content}\n\nAn email campaign has been created and is ready for distribution."
+    },
+    {
+      "name": "schedule_marketing_events",
+      "description": "Schedule a marketing event with specified name, date, and venue.",
+      "parameters": [
+        {
+          "name": "event_name",
+          "description": "The name of the event",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "date",
+          "description": "The date of the event",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "venue",
+          "description": "The venue for the event",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Marketing Event Scheduled\n**Event Name:** {event_name}\n**Date:** {date}\n**Venue:** {venue}\n\nThe marketing event has been successfully scheduled and is in the planning stage."
+    }
+  ]
+}

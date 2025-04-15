@@ -10,6 +10,24 @@ from semantic_kernel.kernel_pydantic import KernelBaseModel, Field
 # that work with Semantic Kernel's approach
 
 
+# Classes specifically for handling runtime interrupts
+class GetHumanInputMessage(KernelBaseModel):
+    """Message requesting input from a human."""
+    content: str
+    
+class GroupChatMessage(KernelBaseModel):
+    """Message in a group chat."""
+    body: Any
+    source: str
+    session_id: str
+    target: str = ""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    
+    def __str__(self):
+        content = self.body.content if hasattr(self.body, 'content') else str(self.body)
+        return f"GroupChatMessage(source={self.source}, content={content})"
+
+
 class DataType(str, Enum):
     """Enumeration of possible data types for documents in the database."""
     

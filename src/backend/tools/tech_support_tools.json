@@ -1,0 +1,196 @@
+{
+  "agent_name": "TechSupportAgent",
+  "system_message": "You are a Tech Support agent. You specialize in IT troubleshooting, system administration, network issues, software installation, and general technical support. You help users resolve technology-related problems and provide technical guidance.",
+  "tools": [
+    {
+      "name": "troubleshoot_network_issue",
+      "description": "Troubleshoot a network connectivity issue.",
+      "parameters": [
+        {
+          "name": "issue_description",
+          "description": "Description of the network issue",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Network Troubleshooting\n**Issue Description:** {issue_description}\n\nBased on the description, I've analyzed potential network issues. Common solutions include:\n1. Checking physical connections\n2. Restarting the router/modem\n3. Verifying IP configuration\n4. Testing with different devices\n5. Contacting your ISP if the issue persists"
+    },
+    {
+      "name": "reset_password",
+      "description": "Reset a user's password on a specified system.",
+      "parameters": [
+        {
+          "name": "username",
+          "description": "The username of the account",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "system",
+          "description": "The system where the password needs to be reset",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Password Reset\n**Username:** {username}\n**System:** {system}\n\nA temporary password has been generated and sent to the user's registered email address.\nThe user will be prompted to create a new password upon first login."
+    },
+    {
+      "name": "install_software",
+      "description": "Install software on a specified system.",
+      "parameters": [
+        {
+          "name": "software_name",
+          "description": "The name of the software to install",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "version",
+          "description": "The version of the software",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "system",
+          "description": "The system where the software should be installed",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Software Installation\n**Software:** {software_name}\n**Version:** {version}\n**System:** {system}\n\nThe software has been queued for installation on the specified system.\nInstallation will complete within 30 minutes and the user will be notified."
+    },
+    {
+      "name": "check_system_status",
+      "description": "Check the operational status of a specified system.",
+      "parameters": [
+        {
+          "name": "system",
+          "description": "The system to check",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### System Status Check\n**System:** {system}\n**Current Status:** Operational\n\nThe system status has been checked. Additional details are available in the monitoring dashboard."
+    },
+    {
+      "name": "create_support_ticket",
+      "description": "Create a new IT support ticket.",
+      "parameters": [
+        {
+          "name": "user",
+          "description": "The user requesting support",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "issue",
+          "description": "Description of the issue",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "priority",
+          "description": "The priority level of the issue",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "department",
+          "description": "The department of the user",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Support Ticket Created\n**User:** {user}\n**Issue:** {issue}\n**Priority:** {priority}\n**Department:** {department}\n\nA support ticket has been created and assigned to the appropriate team.\nThe user will receive updates via email as the ticket is processed."
+    },
+    {
+      "name": "add_user_to_group",
+      "description": "Add a user to a security or access group.",
+      "parameters": [
+        {
+          "name": "username",
+          "description": "The username to add to the group",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "group_name",
+          "description": "The name of the group",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### User Added to Group\n**Username:** {username}\n**Group:** {group_name}\n\nThe user has been successfully added to the specified group.\nAccess changes will take effect within 15 minutes."
+    },
+    {
+      "name": "check_backup_status",
+      "description": "Check the status of system backups.",
+      "parameters": [
+        {
+          "name": "system",
+          "description": "The system to check backup status for",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Backup Status Check\n**System:** {system}\n**Status:** Completed Successfully - 2 hours ago\n\nThe backup status has been checked. Full backup logs are available in the backup management system."
+    },
+    {
+      "name": "update_system",
+      "description": "Apply system updates (security patches, software updates, etc.).",
+      "parameters": [
+        {
+          "name": "system",
+          "description": "The system to update",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "update_type",
+          "description": "The type of update to perform",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### System Update\n**System:** {system}\n**Update Type:** {update_type}\n\nThe system update has been scheduled for the next maintenance window.\nUsers will be notified in advance of any potential downtime."
+    },
+    {
+      "name": "troubleshoot_printer_issue",
+      "description": "Troubleshoot a printer-related issue.",
+      "parameters": [
+        {
+          "name": "printer",
+          "description": "The printer with the issue",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "issue",
+          "description": "Description of the printer issue",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Printer Troubleshooting\n**Printer:** {printer}\n**Issue:** {issue}\n\nBased on the issue description, I've prepared troubleshooting steps:\n1. Check physical connections and power\n2. Verify printer driver installation\n3. Clear print queue\n4. Check for paper jams or low ink/toner\n5. Restart the printer and the computer\n\nIf the issue persists, a technician will be dispatched to examine the hardware."
+    },
+    {
+      "name": "perform_security_scan",
+      "description": "Perform a security scan on a specified system.",
+      "parameters": [
+        {
+          "name": "system",
+          "description": "The system to scan",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "scan_type",
+          "description": "The type of security scan to perform",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Security Scan\n**System:** {system}\n**Scan Type:** {scan_type}\n\nThe security scan has been initiated and will run in the background.\nResults will be available in the security dashboard once completed."
+    }
+  ]
+}

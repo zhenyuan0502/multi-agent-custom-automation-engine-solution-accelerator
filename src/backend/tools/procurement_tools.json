@@ -1,0 +1,189 @@
+{
+  "agent_name": "ProcurementAgent",
+  "system_message": "You are a Procurement agent. You specialize in purchasing, vendor management, supply chain operations, and inventory control. You help with creating purchase orders, managing vendors, tracking orders, and ensuring efficient procurement processes.",
+  "tools": [
+    {
+      "name": "create_purchase_order",
+      "description": "Create a purchase order with specified vendor, items and amount.",
+      "parameters": [
+        {
+          "name": "vendor",
+          "description": "The name of the vendor",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "items",
+          "description": "The items being purchased",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "total_amount",
+          "description": "The total amount of the purchase order",
+          "type": "number",
+          "required": true
+        }
+      ],
+      "response_template": "##### Purchase Order Created\n**Vendor:** {vendor}\n**Items:** {items}\n**Total Amount:** ${total_amount:.2f}\n\nA purchase order has been successfully created and sent to the vendor."
+    },
+    {
+      "name": "check_vendor_status",
+      "description": "Check the status of a vendor in the system.",
+      "parameters": [
+        {
+          "name": "vendor",
+          "description": "The name of the vendor",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Vendor Status\n**Vendor:** {vendor}\n**Status:** Active\n\nThe vendor status has been checked."
+    },
+    {
+      "name": "get_vendor_list",
+      "description": "Get a list of all approved vendors.",
+      "parameters": [],
+      "response_template": "##### Vendor List\n\n- Acme Corp (General Supplies) - Rating: A\n- Globex (Technology) - Rating: A+\n- Initech (Office Supplies) - Rating: B\n- Umbrella Corp (Research Equipment) - Rating: C\n\nThe vendor list has been retrieved."
+    },
+    {
+      "name": "update_vendor_information",
+      "description": "Update information for a specific vendor.",
+      "parameters": [
+        {
+          "name": "vendor",
+          "description": "The name of the vendor",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "field",
+          "description": "The field to update",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "value",
+          "description": "The new value for the field",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Vendor Information Updated\n**Vendor:** {vendor}\n**Field Updated:** {field}\n**New Value:** {value}\n\nThe vendor information has been successfully updated."
+    },
+    {
+      "name": "track_order",
+      "description": "Track the status of an order using the order ID.",
+      "parameters": [
+        {
+          "name": "order_id",
+          "description": "The ID of the order",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Order Tracking\n**Order ID:** {order_id}\n**Status:** Processing\n\nThe order status has been checked."
+    },
+    {
+      "name": "approve_invoice",
+      "description": "Approve an invoice for payment.",
+      "parameters": [
+        {
+          "name": "invoice_id",
+          "description": "The ID of the invoice",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "description": "The amount of the invoice",
+          "type": "number",
+          "required": true
+        }
+      ],
+      "response_template": "##### Invoice Approved\n**Invoice ID:** {invoice_id}\n**Amount:** ${amount:.2f}\n\nThe invoice has been approved for payment."
+    },
+    {
+      "name": "evaluate_vendor_performance",
+      "description": "Evaluate the performance of a vendor based on specified criteria.",
+      "parameters": [
+        {
+          "name": "vendor",
+          "description": "The name of the vendor",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "criteria",
+          "description": "The criteria for evaluation",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Vendor Performance Evaluation\n**Vendor:** {vendor}\n**Criteria:** {criteria}\n**Rating:** Good\n\nThe vendor performance has been evaluated."
+    },
+    {
+      "name": "manage_inventory_levels",
+      "description": "Update inventory levels for an item.",
+      "parameters": [
+        {
+          "name": "item",
+          "description": "The name of the item",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "quantity",
+          "description": "The new quantity of the item",
+          "type": "number",
+          "required": true
+        }
+      ],
+      "response_template": "##### Inventory Levels Updated\n**Item:** {item}\n**New Quantity:** {quantity}\n\nThe inventory levels have been successfully updated."
+    },
+    {
+      "name": "request_for_proposal",
+      "description": "Create a Request for Proposal (RFP) for a project.",
+      "parameters": [
+        {
+          "name": "project",
+          "description": "The name of the project",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "requirements",
+          "description": "The requirements for the project",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "deadline",
+          "description": "The submission deadline for the RFP",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Request for Proposal Created\n**Project:** {project}\n**Requirements:** {requirements}\n**Submission Deadline:** {deadline}\n\nA Request for Proposal has been created and is ready for distribution to potential vendors."
+    },
+    {
+      "name": "source_new_supplier",
+      "description": "Source a new supplier for an item based on requirements.",
+      "parameters": [
+        {
+          "name": "item",
+          "description": "The item to source",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "requirements",
+          "description": "The requirements for the supplier",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### New Supplier Sourcing\n**Item:** {item}\n**Requirements:** {requirements}\n\nPotential suppliers have been identified and will be contacted for quotes."
+    }
+  ]
+}
