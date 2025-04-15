@@ -150,9 +150,13 @@ class CosmosMemoryContext(MemoryStoreBase):
 
     async def get_plan(self, plan_id: str) -> Optional[Plan]:
         """Retrieve a plan by its ID."""
-        return await self.get_item_by_id(
-            plan_id, partition_key=plan_id, model_class=Plan
-        )
+        query = "SELECT * FROM c WHERE c.id=@id AND c.data_type=@data_type"
+        parameters = [
+            {"name": "@id", "value": plan_id},
+            {"name": "@data_type", "value": "plan"},
+        ]
+        plans = await self.query_items(query, parameters, Plan)
+        return plans[0] if plans else None
 
     async def get_all_plans(self) -> List[Plan]:
         """Retrieve all plans."""
@@ -172,8 +176,16 @@ class CosmosMemoryContext(MemoryStoreBase):
         """Update an existing step in Cosmos DB."""
         await self.update_item(step)
 
-    async def get_steps_by_plan(self, plan_id: str) -> List[Step]:
-        """Retrieve all steps associated with a plan."""
+    async def get_steps_for_plan(self, plan_id: str, session_id: Optional[str] = None) -> List[Step]:
+        """Retrieve all steps associated with a plan.
+        
+        Args:
+            plan_id: The ID of the plan to retrieve steps for
+            session_id: Optional session ID if known
+            
+        Returns:
+            List of Step objects
+        """
         query = "SELECT * FROM c WHERE c.plan_id=@plan_id AND c.user_id=@user_id AND c.data_type=@data_type"
         parameters = [
             {"name": "@plan_id", "value": plan_id},
@@ -184,10 +196,48 @@ class CosmosMemoryContext(MemoryStoreBase):
         return steps
 
     async def get_step(self, step_id: str, session_id: str) -> Optional[Step]:
-        """Retrieve a step by its ID."""
-        return await self.get_item_by_id(
-            step_id, partition_key=session_id, model_class=Step
-        )
+        """Retrieve a step by its ID.
+        
+        Args:
+            step_id: The ID of the step to retrieve
+            session_id: The session ID this step belongs to
+            
+        Returns:
+            Step object if found, None otherwise
+        """
+        query = "SELECT * FROM c WHERE c.id=@id AND c.session_id=@session_id AND c.data_type=@data_type"
+        parameters = [
+            {"name": "@id", "value": step_id},
+            {"name": "@session_id", "value": session_id},
+            {"name": "@data_type", "value": "step"},
+        ]
+        steps = await self.query_items(query, parameters, Step)
+        return steps[0] if steps else None
+
+    async def add_agent_message(self, message: AgentMessage) -> None:
+        """Add an agent message to Cosmos DB.
+        
+        Args:
+            message: The AgentMessage to add
+        """
+        await self.add_item(message)
+
+    async def get_agent_messages_by_session(self, session_id: str) -> List[AgentMessage]:
+        """Retrieve agent messages for a specific session.
+        
+        Args:
+            session_id: The session ID to get messages for
+            
+        Returns:
+            List of AgentMessage objects
+        """
+        query = "SELECT * FROM c WHERE c.session_id=@session_id AND c.data_type=@data_type ORDER BY c._ts ASC"
+        parameters = [
+            {"name": "@session_id", "value": session_id},
+            {"name": "@data_type", "value": "agent_message"},
+        ]
+        messages = await self.query_items(query, parameters, AgentMessage)
+        return messages
 
     # Methods for messages - adapted for Semantic Kernel
 
@@ -206,6 +256,7 @@ class CosmosMemoryContext(MemoryStoreBase):
             message_dict = {
                 "id": str(uuid.uuid4()),
                 "session_id": self.session_id,
+                "user_id": self.user_id,
                 "data_type": "message",
                 "content": {
                     "role": message.role.value,
@@ -284,6 +335,7 @@ class CosmosMemoryContext(MemoryStoreBase):
         memory_dict = {
             "id": record.id or str(uuid.uuid4()),
             "session_id": self.session_id,
+            "user_id": self.user_id,
             "data_type": "memory",
             "collection": collection,
             "text": record.text,
@@ -387,8 +439,8 @@ class CosmosMemoryContext(MemoryStoreBase):
         except Exception as e:
             logging.exception(f"Failed to delete items from Cosmos DB: {e}")
 
-    async def delete_all_messages(self, data_type) -> None:
-        """Delete all messages from Cosmos DB."""
+    async def delete_all_items(self, data_type) -> None:
+        """Delete all items of a specific type from Cosmos DB."""
         query = "SELECT c.id, c.session_id FROM c WHERE c.data_type=@data_type AND c.user_id=@user_id"
         parameters = [
             {"name": "@data_type", "value": data_type},
@@ -396,22 +448,25 @@ class CosmosMemoryContext(MemoryStoreBase):
         ]
         await self.delete_items_by_query(query, parameters)
 
-    async def get_all_messages(self) -> List[Dict[str, Any]]:
-        """Retrieve all messages from Cosmos DB."""
+    async def get_all_items(self) -> List[Dict[str, Any]]:
+        """Retrieve all items from Cosmos DB."""
         await self._initialized.wait()
         if self._container is None:
             return []
 
         try:
             messages_list = []
-            query = "SELECT * FROM c OFFSET 0 LIMIT @limit"
-            parameters = [{"name": "@limit", "value": 100}]
+            query = "SELECT * FROM c WHERE c.user_id=@user_id OFFSET 0 LIMIT @limit"
+            parameters = [
+                {"name": "@user_id", "value": self.user_id},
+                {"name": "@limit", "value": 100}
+            ]
             items = self._container.query_items(query=query, parameters=parameters)
             async for item in items:
                 messages_list.append(item)
             return messages_list
         except Exception as e:
-            logging.exception(f"Failed to get messages from Cosmos DB: {e}")
+            logging.exception(f"Failed to get items from Cosmos DB: {e}")
             return []
 
     async def close(self) -> None:

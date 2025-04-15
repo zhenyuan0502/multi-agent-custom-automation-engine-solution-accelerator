@@ -8,7 +8,7 @@ from typing import List, Dict, Optional, Any
 from fastapi import FastAPI, HTTPException, Query, Request
 from middleware.health_check import HealthCheckMiddleware
 from auth.auth_utils import get_authenticated_user_details
-from config_kernel import Config
+from config import Config
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
     HumanFeedback,
@@ -21,7 +21,7 @@ from models.messages_kernel import (
     ActionRequest,
     ActionResponse,
 )
-from utils_kernel import initialize_kernel_context, retrieve_all_agent_tools, rai_success
+from utils_kernel import initialize_runtime_and_context, get_agents, retrieve_all_agent_tools, rai_success
 from event_utils import track_event_if_configured
 from fastapi.middleware.cors import CORSMiddleware
 from azure.monitor.opentelemetry import configure_azure_monitor
@@ -32,17 +32,6 @@ from semantic_kernel.kernel_arguments import KernelArguments
 
 # Import agent-related classes from the new multi_agents structure
 from models.agent_types import AgentType
-from multi_agents.agent_factory import AgentFactory
-from multi_agents.agent_config import AgentBaseConfig
-
-# Import tool getter functions from specialized agents
-from multi_agents.hr_agent import get_hr_tools
-from multi_agents.product_agent import get_product_tools
-from multi_agents.marketing_agent import get_marketing_tools
-from multi_agents.procurement_agent import get_procurement_tools
-from multi_agents.tech_support_agent import get_tech_support_tools
-from multi_agents.generic_agent import get_generic_tools
-
 
 # Check if the Application Insights Instrumentation Key is set in the environment variables
 instrumentation_key = os.getenv("APPLICATIONINSIGHTS_INSTRUMENTATION_KEY")
@@ -85,59 +74,6 @@ app.add_middleware(
 # Configure health check
 app.add_middleware(HealthCheckMiddleware, password="", checks={})
 logging.info("Added health check middleware")
-
-# Agent instances cache
-agent_instances = {}
-
-
-async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
-    """
-    Get or create agent instances for a session using the AgentFactory.
-    
-    Args:
-        session_id: The session identifier
-        user_id: The user identifier
-        
-    Returns:
-        Dictionary of agent instances
-    """
-    cache_key = f"{session_id}_{user_id}"
-    
-    if cache_key in agent_instances:
-        return agent_instances[cache_key]
-    
-    # Register tool getter functions with AgentFactory
-    AgentFactory.register_tool_getter(AgentType.HR, get_hr_tools)
-    AgentFactory.register_tool_getter(AgentType.PRODUCT, get_product_tools)
-    AgentFactory.register_tool_getter(AgentType.MARKETING, get_marketing_tools)
-    AgentFactory.register_tool_getter(AgentType.PROCUREMENT, get_procurement_tools)
-    AgentFactory.register_tool_getter(AgentType.TECH_SUPPORT, get_tech_support_tools)
-    AgentFactory.register_tool_getter(AgentType.GENERIC, get_generic_tools)
-    
-    # Create all agents for this session using the factory
-    raw_agents = await AgentFactory.create_all_agents(
-        session_id=session_id,
-        user_id=user_id,
-        temperature=0.7  # Default temperature
-    )
-    
-    # Convert to the agent name dictionary format used by the rest of the app
-    agents = {
-        "HrAgent": raw_agents[AgentType.HR],
-        "ProductAgent": raw_agents[AgentType.PRODUCT],
-        "MarketingAgent": raw_agents[AgentType.MARKETING],
-        "ProcurementAgent": raw_agents[AgentType.PROCUREMENT],
-        "TechSupportAgent": raw_agents[AgentType.TECH_SUPPORT],
-        "GenericAgent": raw_agents[AgentType.GENERIC],
-        "HumanAgent": raw_agents[AgentType.HUMAN],
-        "PlannerAgent": raw_agents[AgentType.PLANNER],
-        "GroupChatManager": raw_agents[AgentType.GROUP_CHAT_MANAGER],
-    }
-    
-    # Cache the agents
-    agent_instances[cache_key] = agents
-    
-    return agents
 
 
 @app.post("/input_task")
@@ -813,9 +749,9 @@ async def delete_all_messages(request: Request) -> Dict[str, str]:
     logging.info("Deleting all agent_messages")
     await memory_store.delete_all_items("agent_message")
     
-    # Clear the agent instances cache
-    global agent_instances
-    agent_instances = {}
+    # Clear the agent factory cache
+    from multi_agents.agent_factory import AgentFactory
+    AgentFactory.clear_cache()
     
     return {"status": "All messages deleted"}
 
@@ -899,6 +835,14 @@ async def get_agent_tools():
                 description: Arguments required by the tool function
     """
     return retrieve_all_agent_tools()
+
+
+# Initialize tools when application starts
+@app.on_event("startup")
+async def startup_event():
+    # Initialize tools using the new utility function
+    from utils_kernel import initialize_tools
+    await initialize_tools()
 
 
 # Run the app
