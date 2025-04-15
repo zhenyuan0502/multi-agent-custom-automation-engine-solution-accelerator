@@ -4,10 +4,8 @@ from typing import Any, Dict, List, Mapping, Optional
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.kernel_arguments import KernelArguments
-# Import core components needed for Semantic Kernel plugins
-from semantic_kernel.plugin_definition import kernel_function, kernel_function_context_parameter
-# For backward compatibility with older versions
-from semantic_kernel.plugin_definition import sk_function, sk_function_context_parameter
+# Import Azure AI Agent
+from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
 # Import Pydantic model base
 from semantic_kernel.kernel_pydantic import KernelBaseModel
@@ -20,10 +18,11 @@ from models.messages_kernel import (
     Step,
     StepStatus,
 )
+from config_kernel import Config
 from event_utils import track_event_if_configured
 
-class BaseAgent(KernelBaseModel):
-    """BaseAgent implemented using Semantic Kernel instead of AutoGen."""
+class BaseAgent:
+    """BaseAgent implemented using Semantic Kernel's AzureAIAgent."""
 
     def __init__(
         self,
@@ -35,7 +34,6 @@ class BaseAgent(KernelBaseModel):
         tools: List[KernelFunction],
         system_message: str,
     ):
-        super().__init__()
         self._agent_name = agent_name
         self._kernel = kernel
         self._session_id = session_id
@@ -43,29 +41,35 @@ class BaseAgent(KernelBaseModel):
         self._memory_store = memory_store
         self._tools = tools
         self._system_message = system_message
-        self._chat_history = [{"role": "system", "content": system_message}]
         
-        self._register_functions()
+        # Create Azure AI Agent instance
+        self._agent = Config.CreateAzureAIAgent(
+            kernel=self._kernel,
+            agent_name=self._agent_name,
+            instructions=self._system_message
+        )
+        
+        # Register tools with the agent
+        for tool in self._tools:
+            self._agent.add_function(tool)
+        
+        # Register the action handler
+        self._register_handler_functions()
 
-    def _register_functions(self):
-        """Register this agent's functions with the kernel."""
-        # Register the action handler as a native function
-        self._kernel.import_skill(self, skill_name=self._agent_name)
+    def _register_handler_functions(self):
+        """Register this agent's handler functions with the kernel."""
+        # Import this agent's handle_action_request method as a kernel function
+        self._kernel.add_function(
+            self.handle_action_request, 
+            plugin_name=self._agent_name, 
+            function_name="handle_action_request"
+        )
 
-    @kernel_function(
-        description="Handle an action request from another agent",
-        name="handle_action_request",
-    )
-    @kernel_function_context_parameter(
-        name="action_request_json",
-        description="JSON string of the action request",
-    )
     async def handle_action_request(
-        self, context: KernelArguments
+        self, action_request_json: str
     ) -> str:
         """Handle an action request from another agent or the system."""
         try:
-            action_request_json = context["action_request_json"]
             action_request = ActionRequest.parse_raw(action_request_json)
             
             step: Optional[Step] = await self._memory_store.get_step(
@@ -80,27 +84,45 @@ class BaseAgent(KernelBaseModel):
                 )
                 return response.json()
             
-            self._chat_history.extend([
-                {"role": "assistant", "content": action_request.action, "name": "GroupChatManager"},
-                {"role": "user", "content": f"{step.human_feedback}. Now make the function call", "name": "HumanAgent"},
-            ])
+            # Create chat history for the agent
+            messages = []
+            
+            if step.human_feedback:
+                messages.append({
+                    "role": "user", 
+                    "content": f"Task: {action_request.action}\n\nHuman feedback: {step.human_feedback}"
+                })
+            else:
+                messages.append({
+                    "role": "user", 
+                    "content": f"Task: {action_request.action}\n\nPlease complete this task."
+                })
             
             try:
-                variables = KernelArguments()
-                variables["step_id"] = action_request.step_id
-                variables["session_id"] = action_request.session_id
-                variables["plan_id"] = action_request.plan_id
-                variables["action"] = action_request.action
-                variables["chat_history"] = str(self._chat_history)
+                # Pass context to the agent execution
+                execution_settings = {
+                    "step_id": action_request.step_id,
+                    "session_id": action_request.session_id,
+                    "plan_id": action_request.plan_id,
+                    "action": action_request.action,
+                }
                 
-                result = await self._execute_tool_with_llm(variables)
+                # Execute the agent with the messages
+                result = await self._agent.invoke_async(
+                    messages=messages,
+                    kernel_arguments=KernelArguments(**execution_settings)
+                )
                 
+                # Extract the result content
+                result_content = result.value
+
+                # Store agent message in cosmos
                 await self._memory_store.add_item(
                     AgentMessage(
                         session_id=action_request.session_id,
                         user_id=self._user_id,
                         plan_id=action_request.plan_id,
-                        content=f"{result}",
+                        content=f"{result_content}",
                         source=self._agent_name,
                         step_id=action_request.step_id,
                     )
@@ -112,14 +134,15 @@ class BaseAgent(KernelBaseModel):
                         "session_id": action_request.session_id,
                         "user_id": self._user_id,
                         "plan_id": action_request.plan_id,
-                        "content": f"{result}",
+                        "content": f"{result_content}",
                         "source": self._agent_name,
                         "step_id": action_request.step_id,
                     },
                 )
                 
+                # Update the step
                 step.status = StepStatus.completed
-                step.agent_reply = result
+                step.agent_reply = result_content
                 await self._memory_store.update_step(step)
                 
                 track_event_if_configured(
@@ -127,31 +150,33 @@ class BaseAgent(KernelBaseModel):
                     {
                         "status": StepStatus.completed,
                         "session_id": action_request.session_id,
-                        "agent_reply": f"{result}",
+                        "agent_reply": f"{result_content}",
                         "user_id": self._user_id,
                         "plan_id": action_request.plan_id,
-                        "content": f"{result}",
+                        "content": f"{result_content}",
                         "source": self._agent_name,
                         "step_id": action_request.step_id,
                     },
                 )
                 
+                # Create the response
                 action_response = ActionResponse(
                     step_id=step.id,
                     plan_id=step.plan_id,
                     session_id=action_request.session_id,
-                    result=result,
+                    result=result_content,
                     status=StepStatus.completed,
                 )
                 
+                # Publish to group chat manager
                 await self._publish_to_group_chat_manager(action_response)
                 
                 return action_response.json()
                 
             except Exception as e:
-                logging.exception(f"Error during tool execution: {e}")
+                logging.exception(f"Error during agent execution: {e}")
                 track_event_if_configured(
-                    "Base agent - Error during tool execution, captured into the cosmos",
+                    "Base agent - Error during agent execution, captured into the cosmos",
                     {
                         "session_id": action_request.session_id,
                         "user_id": self._user_id,
@@ -179,23 +204,6 @@ class BaseAgent(KernelBaseModel):
                 message=f"Error handling action request: {str(e)}"
             ).json()
 
-    async def _execute_tool_with_llm(self, variables: KernelArguments) -> str:
-        """Execute the appropriate tool based on LLM reasoning."""
-        planner = self._kernel.func("planner", "execute_with_tool")
-        
-        tool_descriptions = "\n".join([f"- {tool.name}: {tool.description}" for tool in self._tools])
-        variables["tools"] = tool_descriptions
-        
-        plan_result = await planner.invoke_async(variables=variables)
-        tool_name = plan_result.result.strip()
-        
-        selected_tool = next((t for t in self._tools if t.name == tool_name), None)
-        if not selected_tool:
-            raise ValueError(f"Tool '{tool_name}' not found")
-        
-        tool_result = await selected_tool.invoke_async(variables=variables)
-        return tool_result.result
-
     async def _publish_to_group_chat_manager(self, response: ActionResponse) -> None:
         """Publish a message to the group chat manager."""
         group_chat_manager_id = f"group_chat_manager_{self._session_id}"
@@ -208,7 +216,9 @@ class BaseAgent(KernelBaseModel):
             logging.warning(f"No connector service found for {group_chat_manager_id}")
 
     def save_state(self) -> Mapping[str, Any]:
+        """Save agent state for persistence."""
         return {"memory": self._memory_store.save_state()}
 
     def load_state(self, state: Mapping[str, Any]) -> None:
+        """Load agent state from persistence."""
         self._memory_store.load_state(state["memory"])

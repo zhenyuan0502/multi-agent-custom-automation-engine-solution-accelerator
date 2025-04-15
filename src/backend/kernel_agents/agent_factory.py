@@ -4,21 +4,24 @@ import logging
 from typing import Dict, List, Callable, Any, Optional, Type
 from semantic_kernel import Kernel
 from semantic_kernel.functions import KernelFunction
+from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
 from models.agent_types import AgentType
-from multi_agents.agent_base import BaseAgent
-from multi_agents.agent_config import AgentBaseConfig
+from kernel_agents.semantic_kernel_agent import BaseAgent
+from config_kernel import Config
 
-# Import all agent implementations
-from multi_agents.hr_agent import HrAgent
-from multi_agents.human_agent import HumanAgent 
-from multi_agents.marketing_agent import MarketingAgent
-from multi_agents.generic_agent import GenericAgent
-from multi_agents.planner_agent import PlannerAgent
-from multi_agents.tech_support_agent import TechSupportAgent
-from multi_agents.procurement_agent import ProcurementAgent
-from multi_agents.product_agent import ProductAgent
-from multi_agents.group_chat_manager import GroupChatManager
+# Import all specialized agent implementations
+from kernel_agents.hr_agent import HrAgent
+from kernel_agents.human_agent import HumanAgent 
+from kernel_agents.marketing_agent import MarketingAgent
+from kernel_agents.generic_agent import GenericAgent
+from kernel_agents.planner_agent import PlannerAgent
+from kernel_agents.tech_support_agent import TechSupportAgent
+from kernel_agents.procurement_agent import ProcurementAgent
+from kernel_agents.product_agent import ProductAgent
+from kernel_agents.group_chat_manager import GroupChatManager
+
+from context.cosmos_memory_kernel import CosmosMemoryContext
 
 logger = logging.getLogger(__name__)
 
@@ -52,16 +55,29 @@ class AgentFactory:
         AgentType.GROUP_CHAT_MANAGER: "group_chat_manager",
     }
 
-    # Tool getters are no longer needed as tools are loaded automatically
-    # but we keep this for backward compatibility
-    _tool_getters: Dict[AgentType, Callable[[Kernel], List[KernelFunction]]] = {}
+    # System messages for each agent type
+    _agent_system_messages: Dict[AgentType, str] = {
+        AgentType.HR: "You are an HR assistant helping with human resource related tasks.",
+        AgentType.MARKETING: "You are a marketing expert helping with marketing related tasks.",
+        AgentType.PRODUCT: "You are a product expert helping with product related tasks.",
+        AgentType.PROCUREMENT: "You are a procurement expert helping with procurement related tasks.",
+        AgentType.TECH_SUPPORT: "You are a technical support expert helping with technical issues.",
+        AgentType.GENERIC: "You are a helpful assistant ready to help with various tasks.",
+        AgentType.HUMAN: "You are representing a human user in the conversation.",
+        AgentType.PLANNER: "You are a planner agent responsible for creating and managing plans.",
+        AgentType.GROUP_CHAT_MANAGER: "You are a group chat manager coordinating the conversation between different agents.",
+    }
 
     # Cache of agent instances by session_id and agent_type
     _agent_cache: Dict[str, Dict[AgentType, BaseAgent]] = {}
+    
+    # Cache of Azure AI Agent instances
+    _azure_ai_agent_cache: Dict[str, Dict[str, AzureAIAgent]] = {}
 
     @classmethod
     def register_agent_class(
-        cls, agent_type: AgentType, agent_class: Type[BaseAgent], agent_type_string: Optional[str] = None
+        cls, agent_type: AgentType, agent_class: Type[BaseAgent], agent_type_string: Optional[str] = None,
+        system_message: Optional[str] = None
     ) -> None:
         """Register a new agent class with the factory.
         
@@ -69,26 +85,16 @@ class AgentFactory:
             agent_type: The type of agent to register
             agent_class: The class to use for this agent type
             agent_type_string: Optional string identifier for the agent type (for tool loading)
+            system_message: Optional system message for the agent
         """
         cls._agent_classes[agent_type] = agent_class
         if agent_type_string:
             cls._agent_type_strings[agent_type] = agent_type_string
+        if system_message:
+            cls._agent_system_messages[agent_type] = system_message
         logger.info(
             f"Registered agent class {agent_class.__name__} for type {agent_type.value}"
         )
-
-    @classmethod
-    def register_tool_getter(
-        cls, agent_type: AgentType, tool_getter: Callable[[Kernel], List[KernelFunction]]
-    ) -> None:
-        """Register a tool getter function for an agent type (for backward compatibility).
-        
-        Args:
-            agent_type: The type of agent
-            tool_getter: A function that returns a list of tools for the agent
-        """
-        cls._tool_getters[agent_type] = tool_getter
-        logger.info(f"Registered tool getter for agent type {agent_type.value}")
 
     @classmethod
     async def create_agent(
@@ -125,47 +131,38 @@ class AgentFactory:
         if not agent_class:
             raise ValueError(f"Unknown agent type: {agent_type}")
             
-        # Create a kernel and memory store
-        kernel = AgentBaseConfig.create_kernel()
-        memory_store = await AgentBaseConfig.create_memory_store(session_id, user_id)
+        # Create memory store
+        memory_store = CosmosMemoryContext(session_id, user_id)
         
-        # Create agent configuration
-        config = AgentBaseConfig(
-            kernel=kernel,
-            session_id=session_id,
-            user_id=user_id,
-            memory_store=memory_store
-        )
+        # Create a kernel
+        kernel = Config.CreateKernel()
         
-        # Get tools for this agent type (for backward compatibility)
-        tools = None
-        if agent_type in cls._tool_getters:
-            tools = cls._tool_getters[agent_type](kernel)
-            
-        # Get the agent_type string for automatic tool loading
-        agent_type_str = cls._agent_type_strings.get(agent_type)
-            
+        # Use default system message if none provided
+        if system_message is None:
+            system_message = cls._agent_system_messages.get(
+                agent_type, 
+                f"You are a helpful AI assistant specialized in {cls._agent_type_strings.get(agent_type, 'general')} tasks."
+            )
+        
+        # Get the agent_type string
+        agent_type_str = cls._agent_type_strings.get(agent_type, agent_type.value.lower())
+        
+        # Create a list of tools for this agent
+        # In a real implementation, this would be loaded from configuration
+        tools = await cls._load_tools_for_agent(kernel, agent_type_str)
+        
         # Create the agent instance
         try:
-            # Check if the agent class constructor accepts agent_type parameter
-            if hasattr(agent_class, '__init__') and 'agent_type' in agent_class.__init__.__code__.co_varnames:
-                agent = agent_class(
-                    config=config,
-                    tools=tools,
-                    temperature=temperature,
-                    system_message=system_message,
-                    agent_type=agent_type_str,
-                    **kwargs
-                )
-            else:
-                # For backward compatibility with agents that don't yet support automatic tool loading
-                agent = agent_class(
-                    config=config,
-                    tools=tools,
-                    temperature=temperature,
-                    system_message=system_message,
-                    **kwargs
-                )
+            agent = agent_class(
+                agent_name=agent_type_str,
+                kernel=kernel,
+                session_id=session_id,
+                user_id=user_id,
+                memory_store=memory_store,
+                tools=tools,
+                system_message=system_message,
+                **kwargs
+            )
         except Exception as e:
             logger.error(
                 f"Error creating agent of type {agent_type} with parameters: {e}"
@@ -178,6 +175,75 @@ class AgentFactory:
         cls._agent_cache[session_id][agent_type] = agent
         
         return agent
+        
+    @classmethod
+    async def create_azure_ai_agent(
+        cls,
+        agent_name: str,
+        session_id: str,
+        system_prompt: str,
+        tools: List[KernelFunction] = None
+    ) -> AzureAIAgent:
+        """Create an Azure AI Agent.
+        
+        Args:
+            agent_name: The name of the agent
+            session_id: The session ID
+            system_prompt: The system prompt for the agent
+            tools: Optional list of tools for the agent
+            
+        Returns:
+            An Azure AI Agent instance
+        """
+        # Check if we already have an agent in the cache
+        cache_key = f"{session_id}_{agent_name}"
+        if session_id in cls._azure_ai_agent_cache and cache_key in cls._azure_ai_agent_cache[session_id]:
+            # If tools are provided, make sure they are registered with the cached agent
+            agent = cls._azure_ai_agent_cache[session_id][cache_key]
+            if tools:
+                for tool in tools:
+                    agent.add_function(tool)
+            return agent
+        
+        # Create a kernel
+        kernel = Config.CreateKernel()
+        
+        # Create the Azure AI Agent
+        agent = Config.CreateAzureAIAgent(
+            kernel=kernel,
+            agent_name=agent_name,
+            instructions=system_prompt
+        )
+        
+        # Register tools if provided
+        if tools:
+            for tool in tools:
+                agent.add_function(tool)
+                
+        # Cache the agent instance
+        if session_id not in cls._azure_ai_agent_cache:
+            cls._azure_ai_agent_cache[session_id] = {}
+        cls._azure_ai_agent_cache[session_id][cache_key] = agent
+        
+        return agent
+        
+    @classmethod
+    async def _load_tools_for_agent(cls, kernel: Kernel, agent_type: str) -> List[KernelFunction]:
+        """Load tools for an agent from the tools directory.
+        
+        This is a placeholder implementation. In a real system, you would load
+        tool configurations from JSON files and register them with the kernel.
+        
+        Args:
+            kernel: The semantic kernel instance
+            agent_type: The agent type string identifier
+            
+        Returns:
+            A list of kernel functions for the agent
+        """
+        # This would be implemented to load tool configurations from the tools directory
+        # For now, return an empty list as tools will be registered with the agent later
+        return []
         
     @classmethod
     async def create_all_agents(
@@ -241,6 +307,10 @@ class AgentFactory:
             if session_id in cls._agent_cache:
                 del cls._agent_cache[session_id]
                 logger.info(f"Cleared agent cache for session {session_id}")
+            if session_id in cls._azure_ai_agent_cache:
+                del cls._azure_ai_agent_cache[session_id]
+                logger.info(f"Cleared Azure AI agent cache for session {session_id}")
         else:
             cls._agent_cache.clear()
+            cls._azure_ai_agent_cache.clear()
             logger.info("Cleared all agent caches")

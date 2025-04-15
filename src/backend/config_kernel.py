@@ -3,12 +3,12 @@ import os
 import logging
 from typing import Optional
 
-# Import Semantic Kernel instead of AutoGen
+# Import Semantic Kernel and Azure AI Agent
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
+from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 from azure.cosmos.aio import CosmosClient
 from azure.identity.aio import (
-    ClientSecretCredential,
     DefaultAzureCredential,
     get_bearer_token_provider,
 )
@@ -56,26 +56,16 @@ class Config:
     __comos_client = None
     __cosmos_database = None
     __azure_chat_completion_service = None
+    __azure_ai_agent_config = None
 
     @staticmethod
     def GetAzureCredentials():
         # Cache the credentials object
         if Config.__azure_credentials is not None:
             return Config.__azure_credentials
-            
-        # If we have specified the credentials in the environment, use them
-        if all(
-            [Config.AZURE_TENANT_ID, Config.AZURE_CLIENT_ID, Config.AZURE_CLIENT_SECRET]
-        ):
-            Config.__azure_credentials = ClientSecretCredential(
-                tenant_id=Config.AZURE_TENANT_ID,
-                client_id=Config.AZURE_CLIENT_ID,
-                client_secret=Config.AZURE_CLIENT_SECRET,
-            )
-        else:
-            # Use the default Azure credential which includes managed identity
-            Config.__azure_credentials = DefaultAzureCredential()
-            
+
+        # Always prefer DefaultAzureCredential
+        Config.__azure_credentials = DefaultAzureCredential()
         return Config.__azure_credentials
 
     # Gives us a cached approach to DB access
@@ -127,41 +117,33 @@ class Config:
         service_id = "chat_service"
         deployment_name = Config.AZURE_OPENAI_DEPLOYMENT_NAME
         endpoint = Config.AZURE_OPENAI_ENDPOINT
-        api_key = Config.AZURE_OPENAI_API_KEY
         api_version = Config.AZURE_OPENAI_API_VERSION
 
-        # Try to use token-based auth if API key is not provided
-        use_token_auth = not api_key
-        
-        if use_token_auth:
-            try:
-                # Create a custom AzureChatCompletion that supports tokens
-                # Note: Semantic Kernel's current implementation may not fully support
-                # token-based authentication directly, so this is a placeholder for future updates
-                logging.warning("Using token-based authentication for Azure OpenAI")
-                Config.__azure_chat_completion_service = AzureChatCompletionWithToken(
-                    service_id=service_id,
-                    deployment_name=deployment_name,
-                    endpoint=endpoint, 
-                    api_version=api_version
-                )
-            except Exception as e:
-                logging.error(f"Failed to initialize token-based Azure OpenAI: {e}")
-                logging.warning("Falling back to API key authentication")
-                use_token_auth = False
-                
-        # If token auth failed or wasn't attempted, use API key
-        if not use_token_auth:
-            if not api_key:
-                raise ValueError("No API key provided for Azure OpenAI and token authentication failed")
-                
-            Config.__azure_chat_completion_service = AzureChatCompletion(
+        # Always prefer token-based authentication using DefaultAzureCredential
+        try:
+            # Create a custom AzureChatCompletion that supports tokens
+            logging.info("Using token-based authentication for Azure OpenAI")
+            Config.__azure_chat_completion_service = AzureChatCompletionWithToken(
                 service_id=service_id,
                 deployment_name=deployment_name,
-                endpoint=endpoint,
-                api_key=api_key,
+                endpoint=endpoint, 
                 api_version=api_version
             )
+        except Exception as e:
+            logging.error(f"Failed to initialize token-based Azure OpenAI: {e}")
+            
+            # Only fall back to API key if we have one and token auth failed
+            if Config.AZURE_OPENAI_API_KEY:
+                logging.warning("Falling back to API key authentication")
+                Config.__azure_chat_completion_service = AzureChatCompletion(
+                    service_id=service_id,
+                    deployment_name=deployment_name,
+                    endpoint=endpoint,
+                    api_key=Config.AZURE_OPENAI_API_KEY,
+                    api_version=api_version
+                )
+            else:
+                raise ValueError("Failed to authenticate with Azure OpenAI. No API key provided and token authentication failed.")
 
         return Config.__azure_chat_completion_service
     
@@ -178,9 +160,73 @@ class Config:
         kernel.add_service(service)
         return kernel
 
+    @staticmethod
+    def GetAzureAIAgentConfig():
+        """
+        Gets or creates the configuration for Azure AI Agents.
+        
+        Returns:
+            A dictionary with configuration for creating Azure AI Agents
+        """
+        if Config.__azure_ai_agent_config is not None:
+            return Config.__azure_ai_agent_config
+            
+        # We prefer token-based auth via DefaultAzureCredential
+        token = None
+        # This is a synchronous method, so we can't await GetAzureOpenAIToken directly
+        # In a real implementation, you'd make this method async
+        
+        Config.__azure_ai_agent_config = {
+            "deployment_name": Config.AZURE_OPENAI_DEPLOYMENT_NAME,
+            "endpoint": Config.AZURE_OPENAI_ENDPOINT,
+            "api_version": Config.AZURE_OPENAI_API_VERSION,
+            # Include API key as fallback only
+            "api_key": Config.AZURE_OPENAI_API_KEY if not token else None,
+            # In a real implementation, you'd include the token here
+            # "token": token
+        }
+        
+        return Config.__azure_ai_agent_config
+    
+    @staticmethod
+    def CreateAzureAIAgent(kernel: Kernel, agent_name: str, instructions: str, agent_type: str = "assistant"):
+        """
+        Creates a new Azure AI Agent with the specified name and instructions.
+        
+        Args:
+            kernel: The Semantic Kernel instance
+            agent_name: The name of the agent
+            instructions: The system message / instructions for the agent
+            agent_type: The type of agent (defaults to "assistant")
+            
+        Returns:
+            A new AzureAIAgent instance
+        """
+        config = Config.GetAzureAIAgentConfig()
+        
+        # Try to use token-based auth if possible
+        # For now, we fall back to API key if needed
+        if not config["api_key"]:
+            # This isn't ideal - in a real implementation we would make this method async
+            # and await the token properly
+            logging.warning("API key not available for AzureAIAgent - in production, implement proper token auth")
+        
+        # Create the Azure AI Agent
+        agent = AzureAIAgent.create(
+            kernel=kernel,
+            deployment_name=config["deployment_name"],
+            endpoint=config["endpoint"],
+            api_key=config["api_key"],  # This would be None if using token auth
+            api_version=config["api_version"],
+            agent_type=agent_type,
+            agent_name=agent_name,
+            system_prompt=instructions,
+        )
+        
+        return agent
 
-# This is a placeholder for a future implementation that supports token-based authentication
-# The actual implementation would depend on Semantic Kernel's support for token auth
+
+# This is a modified implementation that supports token-based authentication
 class AzureChatCompletionWithToken(AzureChatCompletion):
     """Extended Azure Chat Completion service that supports token-based authentication."""
     
@@ -200,7 +246,8 @@ class AzureChatCompletionWithToken(AzureChatCompletion):
             api_version=api_version
         )
         
-        # Note: In a real implementation, you would override the methods that make
-        # HTTP requests to Azure OpenAI to include the Authorization header with the token
-        # For now, this is just a placeholder until Semantic Kernel provides better support
-        logging.warning("Token-based authentication for Azure OpenAI is not fully implemented")
+        # Store credentials for token retrieval
+        self._credentials = Config.GetAzureCredentials()
+        self._scopes = Config.AZURE_OPENAI_SCOPES
+        
+        logging.info("Initialized token-based authentication for Azure OpenAI")

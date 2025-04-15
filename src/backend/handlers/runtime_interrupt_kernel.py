@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
 import semantic_kernel as sk
+from semantic_kernel.kernel_arguments import KernelArguments
 
 # Import directly from the Kernel base model class for our handlers
 from semantic_kernel.kernel_pydantic import KernelBaseModel
@@ -50,6 +51,14 @@ class NeedsUserInputHandler:
                 "content": message.body.content if hasattr(message.body, 'content') else str(message.body),
             })
             print(f"Captured group chat message in NeedsUserInputHandler - {message}")
+        elif isinstance(message, dict) and "content" in message:
+            # Handle messages directly from AzureAIAgent
+            self.question_for_human = GetHumanInputMessage(content=message["content"])
+            self.messages.append({
+                "agent": {"type": sender_type, "key": sender_key},
+                "content": message["content"],
+            })
+            print("Captured question from AzureAIAgent in NeedsUserInputHandler")
         
         return message
 
@@ -87,6 +96,10 @@ class AssistantResponseHandler:
         if hasattr(message, "body") and sender_type in ["writer", "editor"]:
             self.assistant_response = message.body.content if hasattr(message.body, 'content') else str(message.body)
             print("Assistant response set in AssistantResponseHandler")
+        elif isinstance(message, dict) and "value" in message and sender_type:
+            # Handle message from AzureAIAgent
+            self.assistant_response = message["value"]
+            print("Assistant response from AzureAIAgent set in AssistantResponseHandler")
         
         return message
 
@@ -109,19 +122,36 @@ def register_handlers(kernel: sk.Kernel, session_id: str) -> tuple:
     user_input_handler = NeedsUserInputHandler()
     assistant_handler = AssistantResponseHandler()
     
-    # Register the handlers with the kernel for the given session
-    handler_name = f"input_handler_{session_id}"
-    response_name = f"response_handler_{session_id}"
+    # Create kernel plugins for the handlers
+    # We'll add these as functions that can be called from the kernel
+    kernel.add_function(
+        user_input_handler.on_message,
+        plugin_name=f"user_input_handler_{session_id}",
+        function_name="on_message"
+    )
     
-    # Store handlers in kernel's memory for later retrieval
-    # This is a simplified approach - in a real implementation you would use proper SK plugins
-    if hasattr(kernel, "register_memory_record"):
-        kernel.register_memory_record(handler_name, user_input_handler)
-        kernel.register_memory_record(response_name, assistant_handler)
-    else:
-        # Fallback if kernel doesn't have the method
-        setattr(kernel, handler_name, user_input_handler)
-        setattr(kernel, response_name, assistant_handler)
+    kernel.add_function(
+        assistant_handler.on_message,
+        plugin_name=f"assistant_handler_{session_id}",
+        function_name="on_message"
+    )
+    
+    # Store handler references in kernel's memory for later retrieval
+    kernel.register_memory_record(f"input_handler_{session_id}", user_input_handler)
+    kernel.register_memory_record(f"response_handler_{session_id}", assistant_handler)
     
     print(f"Registered handlers for session {session_id} with kernel")
+    return user_input_handler, assistant_handler
+
+# Helper function to get the registered handlers for a session
+def get_handlers(kernel: sk.Kernel, session_id: str) -> tuple:
+    """Get the registered interrupt handlers for a session."""
+    user_input_handler = kernel.recall_memory_record(f"input_handler_{session_id}")
+    assistant_handler = kernel.recall_memory_record(f"response_handler_{session_id}")
+    
+    # Check if the handlers exist
+    if not user_input_handler or not assistant_handler:
+        # Create new handlers if they don't exist
+        return register_handlers(kernel, session_id)
+    
     return user_input_handler, assistant_handler
