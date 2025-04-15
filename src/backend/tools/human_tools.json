@@ -1,0 +1,94 @@
+{
+  "agent_name": "HumanAgent",
+  "system_message": "You are representing a human user in the conversation. You handle interactions that require human feedback or input, such as providing clarification, approving plans, or giving feedback on steps.",
+  "tools": [
+    {
+      "name": "handle_step_feedback",
+      "description": "Handles the human feedback for a single step from the GroupChatManager. Updates the step status and stores the feedback in the session context.",
+      "parameters": [
+        {
+          "name": "step_id",
+          "description": "The ID of the step receiving feedback",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "session_id",
+          "description": "The session ID",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "human_feedback",
+          "description": "The feedback provided by the human user",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Step Feedback Handled\n**Step ID:** {step_id}\n**Session ID:** {session_id}\n\nYour feedback has been recorded and the step has been updated."
+    },
+    {
+      "name": "provide_clarification",
+      "description": "Provides clarification in response to a request from the Planner agent",
+      "parameters": [
+        {
+          "name": "session_id",
+          "description": "The session ID",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "clarification_text",
+          "description": "The clarification information provided by the human user",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Clarification Provided\n**Session ID:** {session_id}\n**Clarification:** {clarification_text}\n\nYour clarification has been submitted to the planning process."
+    },
+    {
+      "name": "approve_plan",
+      "description": "Approves a plan created by the Planner agent",
+      "parameters": [
+        {
+          "name": "plan_id",
+          "description": "The ID of the plan to approve",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "session_id",
+          "description": "The session ID",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Plan Approved\n**Plan ID:** {plan_id}\n**Session ID:** {session_id}\n\nThe plan has been approved and will now be executed."
+    },
+    {
+      "name": "reject_plan",
+      "description": "Rejects a plan created by the Planner agent",
+      "parameters": [
+        {
+          "name": "plan_id",
+          "description": "The ID of the plan to reject",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "session_id",
+          "description": "The session ID",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "description": "The reason for rejecting the plan",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Plan Rejected\n**Plan ID:** {plan_id}\n**Session ID:** {session_id}\n**Reason:** {reason}\n\nThe plan has been rejected. A new plan will need to be created."
+    }
+  ]
+}
