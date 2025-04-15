@@ -604,3 +604,94 @@ class CosmosMemoryContext(MemoryStoreBase):
         except Exception as e:
             logging.exception(f"Failed to get memory records from Cosmos DB: {e}")
             return []
+
+    # Required abstract methods from MemoryStoreBase
+
+    async def upsert(self, collection_name: str, record: MemoryRecord) -> str:
+        """Upsert a memory record into the store."""
+        return await self.upsert_memory_record(collection_name, record)
+
+    async def upsert_batch(self, collection_name: str, records: List[MemoryRecord]) -> List[str]:
+        """Upsert a batch of memory records into the store."""
+        result_ids = []
+        for record in records:
+            record_id = await self.upsert_memory_record(collection_name, record)
+            result_ids.append(record_id)
+        return result_ids
+
+    async def get(self, collection_name: str, key: str, with_embedding: bool = False) -> MemoryRecord:
+        """Get a memory record from the store."""
+        return await self.get_memory_record(collection_name, key, with_embedding)
+
+    async def get_batch(self, collection_name: str, keys: List[str], with_embeddings: bool = False) -> List[MemoryRecord]:
+        """Get a batch of memory records from the store."""
+        results = []
+        for key in keys:
+            record = await self.get_memory_record(collection_name, key, with_embeddings)
+            if record:
+                results.append(record)
+        return results
+
+    async def remove(self, collection_name: str, key: str) -> None:
+        """Remove a memory record from the store."""
+        await self.remove_memory_record(collection_name, key)
+
+    async def remove_batch(self, collection_name: str, keys: List[str]) -> None:
+        """Remove a batch of memory records from the store."""
+        for key in keys:
+            await self.remove_memory_record(collection_name, key)
+
+    async def get_nearest_match(
+        self, 
+        collection_name: str, 
+        embedding: np.ndarray, 
+        limit: int = 1, 
+        min_relevance_score: float = 0.0, 
+        with_embeddings: bool = False
+    ) -> Tuple[MemoryRecord, float]:
+        """Get the nearest match to the given embedding."""
+        matches = await self.get_nearest_matches(
+            collection_name, 
+            embedding, 
+            limit, 
+            min_relevance_score, 
+            with_embeddings
+        )
+        return matches[0] if matches else (None, 0.0)
+
+    async def get_nearest_matches(
+        self, 
+        collection_name: str, 
+        embedding: np.ndarray, 
+        limit: int = 1, 
+        min_relevance_score: float = 0.0, 
+        with_embeddings: bool = False
+    ) -> List[Tuple[MemoryRecord, float]]:
+        """Get the nearest matches to the given embedding."""
+        await self._initialized.wait()
+        
+        try:
+            # Get all memory records from the collection
+            records = await self.get_memory_records(collection_name, limit=100, with_embeddings=True)
+            
+            # Compute cosine similarity with each record and sort
+            results = []
+            for record in records:
+                if record.embedding is not None:
+                    # Compute cosine similarity between the query and each record
+                    similarity = np.dot(embedding, record.embedding) / (
+                        np.linalg.norm(embedding) * np.linalg.norm(record.embedding)
+                    )
+                    
+                    if similarity >= min_relevance_score:
+                        # If we don't need the embeddings in the results, set them to None
+                        if not with_embeddings:
+                            record.embedding = None
+                        results.append((record, float(similarity)))
+            
+            # Sort by similarity (descending) and limit the results
+            results.sort(key=lambda x: x[1], reverse=True)
+            return results[:limit]
+        except Exception as e:
+            logging.exception(f"Failed to get nearest matches from Cosmos DB: {e}")
+            return []
