@@ -14,7 +14,8 @@ from azure.monitor.opentelemetry import configure_azure_monitor
 
 # Semantic Kernel imports
 import semantic_kernel as sk
-from semantic_kernel.kernel_arguments import KernelArguments
+# Updated import for KernelArguments
+from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 # Local imports
 from middleware.health_check import HealthCheckMiddleware
@@ -870,8 +871,8 @@ async def startup_event():
         logging.info("Agent factory successfully initialized")
         
     except Exception as e:
-        logging.error(f"Error initializing agent factory: {e}")
         # Don't fail startup, but log the error
+        logging.error(f"Error initializing agent factory: {e}")
 
 
 # Run the app

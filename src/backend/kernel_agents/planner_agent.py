@@ -1,13 +1,13 @@
 import logging
 import uuid
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Annotated
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
-from semantic_kernel.plugin_definition import kernel_function, kernel_function_context_parameter
-from semantic_kernel.kernel_arguments import KernelArguments
+from semantic_kernel.functions.kernel_function_decorator import kernel_function
+from semantic_kernel.functions.kernel_arguments import KernelArguments
 
-from multi_agents.agent_base import BaseAgent
+from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
     AgentType,
@@ -83,20 +83,16 @@ class PlannerAgent(BaseAgent):
         description="Create a plan based on a user's goal",
         name="create_plan"
     )
-    @kernel_function_context_parameter(
-        name="goal",
-        description="The user's goal or task",
-    )
-    @kernel_function_context_parameter(
-        name="user_id",
-        description="The user's ID",
-    )
-    @kernel_function_context_parameter(
-        name="session_id",
-        description="The current session ID",
-    )
     async def create_plan(
-        self, context: KernelArguments
+        self, 
+        context: Annotated[
+            KernelArguments, 
+            {
+                "goal": "The user's goal or task",
+                "user_id": "The user's ID",
+                "session_id": "The current session ID",
+            }
+        ]
     ) -> str:
         """Create a detailed plan based on the user's goal."""
         try:
@@ -223,12 +219,14 @@ class PlannerAgent(BaseAgent):
         description="Handle an input task from the user",
         name="handle_input_task"
     )
-    @kernel_function_context_parameter(
-        name="input_task_json",
-        description="JSON string of the input task",
-    )
     async def handle_input_task(
-        self, context: KernelArguments
+        self, 
+        context: Annotated[
+            KernelArguments, 
+            {
+                "input_task_json": "JSON string of the input task",
+            }
+        ]
     ) -> str:
         """Handle an input task from the user and create a plan."""
         try:

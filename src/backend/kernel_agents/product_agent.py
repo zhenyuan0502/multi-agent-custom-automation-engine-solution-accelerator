@@ -3,7 +3,7 @@ from typing import List
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 
-from multi_agents.agent_base import BaseAgent
+from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 
 formatting_instructions = "Instructions: returning the output of this function call verbatim to the user in markdown. Then write AGENT SUMMARY: and then include a summary of what you did."

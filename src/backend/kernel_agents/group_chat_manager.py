@@ -1,13 +1,13 @@
 import logging
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Annotated
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
-from semantic_kernel.plugin_definition import kernel_function, kernel_function_context_parameter
-from semantic_kernel.kernel_arguments import KernelArguments
+from semantic_kernel.functions.kernel_function_decorator import kernel_function
+from semantic_kernel.functions.kernel_arguments import KernelArguments
 
-from multi_agents.agent_base import BaseAgent
+from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
     ActionRequest,
@@ -84,12 +84,14 @@ class GroupChatManager(BaseAgent):
         description="Handle a response from an agent after performing an action",
         name="handle_action_response"
     )
-    @kernel_function_context_parameter(
-        name="action_response_json",
-        description="JSON string of the action response",
-    )
     async def handle_action_response(
-        self, context: KernelArguments
+        self, 
+        context: Annotated[
+            KernelArguments, 
+            {
+                "action_response_json": "JSON string of the action response"
+            }
+        ]
     ) -> str:
         """Handle a response from an agent after performing an action."""
         try:
@@ -142,16 +144,15 @@ class GroupChatManager(BaseAgent):
         description="Execute the next step in the plan",
         name="execute_next_step"
     )
-    @kernel_function_context_parameter(
-        name="session_id",
-        description="The session ID",
-    )
-    @kernel_function_context_parameter(
-        name="plan_id",
-        description="The plan ID",
-    )
     async def execute_next_step(
-        self, context: KernelArguments
+        self, 
+        context: Annotated[
+            KernelArguments, 
+            {
+                "session_id": "The session ID",
+                "plan_id": "The plan ID"
+            }
+        ]
     ) -> str:
         """Execute the next step in the plan."""
         try:
@@ -225,16 +226,15 @@ class GroupChatManager(BaseAgent):
         description="Get the next step to execute from the plan",
         name="get_next_step"
     )
-    @kernel_function_context_parameter(
-        name="session_id",
-        description="The session ID",
-    )
-    @kernel_function_context_parameter(
-        name="plan_id",
-        description="The plan ID",
-    )
     async def get_next_step(
-        self, context: KernelArguments
+        self, 
+        context: Annotated[
+            KernelArguments, 
+            {
+                "session_id": "The session ID",
+                "plan_id": "The plan ID"
+            }
+        ]
     ) -> Optional[str]:
         """Get the next step to execute from the plan."""
         try:

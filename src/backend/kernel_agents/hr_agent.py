@@ -3,7 +3,7 @@ from typing import List, Optional
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 
-from multi_agents.agent_base import BaseAgent
+from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 
 class HrAgent(BaseAgent):

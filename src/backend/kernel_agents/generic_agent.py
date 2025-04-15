@@ -1,11 +1,11 @@
 import logging
-from typing import List
+from typing import List, Optional
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
-from semantic_kernel.kernel_arguments import KernelArguments
+from semantic_kernel.functions.kernel_arguments import KernelArguments
 
-from multi_agents.agent_base import BaseAgent
+from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 
 async def dummy_function() -> str:

@@ -1,12 +1,12 @@
 import logging
-from typing import List
+from typing import List, Annotated
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
-from semantic_kernel.plugin_definition import kernel_function, kernel_function_context_parameter
-from semantic_kernel.kernel_arguments import KernelArguments
+from semantic_kernel.functions.kernel_function_decorator import kernel_function
+from semantic_kernel.functions.kernel_arguments import KernelArguments
 
-from multi_agents.agent_base import BaseAgent
+from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
     HumanFeedback,
@@ -48,16 +48,12 @@ class HumanAgent(BaseAgent):
         description="Handle feedback from a human on a planned step",
         name="handle_human_feedback"
     )
-    @kernel_function_context_parameter(
-        name="human_feedback_json",
-        description="JSON string containing human feedback on a step",
-    )
     async def handle_human_feedback(
-        self, context: KernelArguments
+        self, 
+        human_feedback_json: Annotated[str, "JSON string containing human feedback on a step"]
     ) -> str:
         """Handle feedback from a human user on a proposed step in the plan."""
         try:
-            human_feedback_json = context["human_feedback_json"]
             feedback = HumanFeedback.parse_raw(human_feedback_json)
             
             # Get the step from memory

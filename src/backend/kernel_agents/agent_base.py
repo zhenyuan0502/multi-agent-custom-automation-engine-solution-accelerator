@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Mapping, Optional, Callable, Awaitable
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
-from semantic_kernel.kernel_arguments import KernelArguments
+# Updated import for KernelArguments
+from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
 from context.cosmos_memory_kernel import CosmosMemoryContext
