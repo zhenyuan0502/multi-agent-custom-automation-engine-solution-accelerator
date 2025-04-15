@@ -30,15 +30,18 @@ import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.kernel_arguments import KernelArguments
 
-from multi_agents.planner_agent import PlannerAgent
-from multi_agents.human_agent import HumanAgent
-from multi_agents.group_chat_manager import GroupChatManager
-from multi_agents.hr_agent import HrAgent, get_hr_tools
-from multi_agents.product_agent import ProductAgent, get_product_tools
-from multi_agents.marketing_agent import MarketingAgent, get_marketing_tools
-from multi_agents.procurement_agent import ProcurementAgent, get_procurement_tools
-from multi_agents.tech_support_agent import TechSupportAgent, get_tech_support_tools
-from multi_agents.generic_agent import GenericAgent, get_generic_tools
+# Import agent-related classes from the new multi_agents structure
+from models.agent_types import AgentType
+from multi_agents.agent_factory import AgentFactory
+from multi_agents.agent_config import AgentBaseConfig
+
+# Import tool getter functions from specialized agents
+from multi_agents.hr_agent import get_hr_tools
+from multi_agents.product_agent import get_product_tools
+from multi_agents.marketing_agent import get_marketing_tools
+from multi_agents.procurement_agent import get_procurement_tools
+from multi_agents.tech_support_agent import get_tech_support_tools
+from multi_agents.generic_agent import get_generic_tools
 
 
 # Check if the Application Insights Instrumentation Key is set in the environment variables
@@ -89,7 +92,7 @@ agent_instances = {}
 
 async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
     """
-    Get or create agent instances for a session.
+    Get or create agent instances for a session using the AgentFactory.
     
     Args:
         session_id: The session identifier
@@ -103,34 +106,33 @@ async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
     if cache_key in agent_instances:
         return agent_instances[cache_key]
     
-    # Initialize kernel and memory store
-    kernel, memory_store = await initialize_kernel_context(session_id, user_id)
+    # Register tool getter functions with AgentFactory
+    AgentFactory.register_tool_getter(AgentType.HR, get_hr_tools)
+    AgentFactory.register_tool_getter(AgentType.PRODUCT, get_product_tools)
+    AgentFactory.register_tool_getter(AgentType.MARKETING, get_marketing_tools)
+    AgentFactory.register_tool_getter(AgentType.PROCUREMENT, get_procurement_tools)
+    AgentFactory.register_tool_getter(AgentType.TECH_SUPPORT, get_tech_support_tools)
+    AgentFactory.register_tool_getter(AgentType.GENERIC, get_generic_tools)
     
-    # Create specialized agents
-    hr_agent = HrAgent(kernel, session_id, user_id, memory_store, get_hr_tools(kernel))
-    product_agent = ProductAgent(kernel, session_id, user_id, memory_store, get_product_tools(kernel))
-    marketing_agent = MarketingAgent(kernel, session_id, user_id, memory_store, get_marketing_tools(kernel))
-    procurement_agent = ProcurementAgent(kernel, session_id, user_id, memory_store, get_procurement_tools(kernel))
-    tech_support_agent = TechSupportAgent(kernel, session_id, user_id, memory_store, get_tech_support_tools(kernel))
-    generic_agent = GenericAgent(kernel, session_id, user_id, memory_store, get_generic_tools(kernel))
-    human_agent = HumanAgent(kernel, session_id, user_id, memory_store)
-    planner_agent = PlannerAgent(kernel, session_id, user_id, memory_store)
+    # Create all agents for this session using the factory
+    raw_agents = await AgentFactory.create_all_agents(
+        session_id=session_id,
+        user_id=user_id,
+        temperature=0.7  # Default temperature
+    )
     
-    # Create agent dictionary
+    # Convert to the agent name dictionary format used by the rest of the app
     agents = {
-        "HrAgent": hr_agent,
-        "ProductAgent": product_agent,
-        "MarketingAgent": marketing_agent,
-        "ProcurementAgent": procurement_agent,
-        "TechSupportAgent": tech_support_agent,
-        "GenericAgent": generic_agent,
-        "HumanAgent": human_agent,
-        "PlannerAgent": planner_agent,
+        "HrAgent": raw_agents[AgentType.HR],
+        "ProductAgent": raw_agents[AgentType.PRODUCT],
+        "MarketingAgent": raw_agents[AgentType.MARKETING],
+        "ProcurementAgent": raw_agents[AgentType.PROCUREMENT],
+        "TechSupportAgent": raw_agents[AgentType.TECH_SUPPORT],
+        "GenericAgent": raw_agents[AgentType.GENERIC],
+        "HumanAgent": raw_agents[AgentType.HUMAN],
+        "PlannerAgent": raw_agents[AgentType.PLANNER],
+        "GroupChatManager": raw_agents[AgentType.GROUP_CHAT_MANAGER],
     }
-    
-    # Create group chat manager
-    group_chat_manager = GroupChatManager(kernel, session_id, user_id, memory_store, agents)
-    agents["GroupChatManager"] = group_chat_manager
     
     # Cache the agents
     agent_instances[cache_key] = agents
