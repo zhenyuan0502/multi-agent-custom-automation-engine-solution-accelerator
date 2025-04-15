@@ -127,27 +127,90 @@ async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
     
     return agents
 
-def retrieve_all_agent_tools() -> List[Dict[str, Any]]:
+async def retrieve_all_agent_tools() -> List[Dict[str, Any]]:
     """
-    Retrieves all agent tools information using the BaseAgent tool loading mechanism.
+    Retrieves all agent tools by creating temporary agent instances and extracting their tools.
+    This ensures the tools returned reflect the actual tools available to each agent.
+    
+    Returns:
+        List of dictionaries containing tool information
+    """
+    functions = []
+    
+    try:
+        # Create a temporary session and user ID for tool discovery
+        temp_session_id = "tools-discovery-session"
+        temp_user_id = "tools-discovery-user"
+        
+        # Create agents for all types to extract their tools
+        agents = await AgentFactory.create_all_agents(
+            session_id=temp_session_id,
+            user_id=temp_user_id,
+            temperature=0.7
+        )
+        
+        # Map of agent types to friendly names for display
+        agent_display_names = {
+            AgentTypeEnum.HR: "HR Agent",
+            AgentTypeEnum.MARKETING: "Marketing Agent",
+            AgentTypeEnum.PRODUCT: "Product Agent",
+            AgentTypeEnum.PROCUREMENT: "Procurement Agent",
+            AgentTypeEnum.TECH_SUPPORT: "Tech Support Agent",
+            AgentTypeEnum.GENERIC: "Generic Agent",
+            AgentTypeEnum.HUMAN: "Human Agent",
+            AgentTypeEnum.PLANNER: "Planner Agent",
+            AgentTypeEnum.GROUP_CHAT_MANAGER: "Group Chat Manager"
+        }
+        
+        # Process each agent's tools
+        for agent_type, agent in agents.items():
+            # Skip agents without tools attribute
+            if not hasattr(agent, '_tools') or agent._tools is None:
+                continue
+                
+            agent_name = agent_display_names.get(agent_type, str(agent_type))
+            
+            # Extract tool information from the agent
+            for tool in agent._tools:
+                # Inspect the tool to extract properties
+                tool_info = {
+                    "agent": agent_name,
+                    "function": tool.name,
+                    "description": tool.description if hasattr(tool, 'description') else "",
+                    "parameters": str(tool.metadata.get("parameters", {})) if hasattr(tool, 'metadata') else "{}"
+                }
+                functions.append(tool_info)
+        
+        # Clean up by clearing the cache for the temporary session
+        AgentFactory.clear_cache(temp_session_id)
+        
+    except Exception as e:
+        logging.error(f"Error loading agent tools: {e}")
+        # Fallback to static tool configuration if agent creation fails
+        fallback_functions = _retrieve_tools_from_config()
+        return fallback_functions
+    
+    return functions
+
+def _retrieve_tools_from_config() -> List[Dict[str, Any]]:
+    """
+    Fallback method to retrieve tool information from config files
+    when agent creation fails.
     
     Returns:
         List of dictionaries containing tool information
     """
     from multi_agents.agent_base import BaseAgent
-    
     functions = []
     
-    # Get tool configurations using BaseAgent's loading mechanism
     try:
-        # Process each agent type
         agent_types = ["hr", "marketing", "procurement", "product", "tech_support", "generic", "planner", "human"]
         
         for agent_type in agent_types:
             # Use BaseAgent's configuration loading method
             config = BaseAgent.load_tools_config(agent_type)
             
-            agent_name = config.get("agent_name", f"{agent_type.capitalize()}Agent")
+            agent_name = config.get("agent_name", f"{agent_type.capitalize()} Agent")
             
             for tool in config.get("tools", []):
                 functions.append({
@@ -157,7 +220,7 @@ def retrieve_all_agent_tools() -> List[Dict[str, Any]]:
                     "parameters": str(tool.get("parameters", {}))
                 })
     except Exception as e:
-        logging.error(f"Error loading tool definitions: {e}")
+        logging.error(f"Error in fallback tool loading: {e}")
     
     return functions
 
