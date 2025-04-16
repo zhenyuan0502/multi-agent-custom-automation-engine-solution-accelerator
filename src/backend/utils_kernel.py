@@ -64,30 +64,37 @@ async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
     if cache_key in agent_instances:
         return agent_instances[cache_key]
     
-    # Create all agents for this session using the factory
-    raw_agents = await AgentFactory.create_all_agents(
-        session_id=session_id,
-        user_id=user_id,
-        temperature=0.0  # Default temperature
-    )
-    
-    # Convert to the agent name dictionary format used by the rest of the app
-    agents = {
-        "HrAgent": raw_agents[AgentType.HR],
-        "ProductAgent": raw_agents[AgentType.PRODUCT],
-        "MarketingAgent": raw_agents[AgentType.MARKETING],
-        "ProcurementAgent": raw_agents[AgentType.PROCUREMENT],
-        "TechSupportAgent": raw_agents[AgentType.TECH_SUPPORT],
-        "GenericAgent": raw_agents[AgentType.GENERIC],
-        "HumanAgent": raw_agents[AgentType.HUMAN],
-        "PlannerAgent": raw_agents[AgentType.PLANNER],
-        "GroupChatManager": raw_agents[AgentType.GROUP_CHAT_MANAGER],
-    }
-    
-    # Cache the agents
-    agent_instances[cache_key] = agents
-    
-    return agents
+    try:
+        # Create all agents for this session using the factory
+        raw_agents = await AgentFactory.create_all_agents(
+            session_id=session_id,
+            user_id=user_id,
+            temperature=0.0  # Default temperature
+        )
+        
+        # Get mapping of agent types to class names
+        agent_classes = {
+            AgentType.HR: "HrAgent",
+            AgentType.PRODUCT: "ProductAgent",
+            AgentType.MARKETING: "MarketingAgent",
+            AgentType.PROCUREMENT: "ProcurementAgent",
+            AgentType.TECH_SUPPORT: "TechSupportAgent",
+            AgentType.GENERIC: "GenericAgent",
+            AgentType.HUMAN: "HumanAgent",
+            AgentType.PLANNER: "PlannerAgent", 
+            AgentType.GROUP_CHAT_MANAGER: "GroupChatManager",
+        }
+        
+        # Convert to the agent name dictionary format used by the rest of the app
+        agents = {agent_classes[agent_type]: agent for agent_type, agent in raw_agents.items()}
+        
+        # Cache the agents
+        agent_instances[cache_key] = agents
+        
+        return agents
+    except Exception as e:
+        logging.error(f"Error creating agents: {str(e)}")
+        raise
 
 async def get_azure_ai_agent(
     session_id: str, 
@@ -117,20 +124,24 @@ async def get_azure_ai_agent(
                 agent.add_function(tool)
         return agent
     
-    # Create the agent using the factory
-    agent = await AgentFactory.create_azure_ai_agent(
-        agent_name=agent_name,
-        session_id=session_id,
-        system_prompt=system_prompt,
-        tools=tools
-    )
-    
-    # Cache the agent
-    if session_id not in azure_agent_instances:
-        azure_agent_instances[session_id] = {}
-    azure_agent_instances[session_id][cache_key] = agent
-    
-    return agent
+    try:
+        # Create the agent using the factory
+        agent = await AgentFactory.create_azure_ai_agent(
+            agent_name=agent_name,
+            session_id=session_id,
+            system_prompt=system_prompt,
+            tools=tools
+        )
+        
+        # Cache the agent
+        if session_id not in azure_agent_instances:
+            azure_agent_instances[session_id] = {}
+        azure_agent_instances[session_id][cache_key] = agent
+        
+        return agent
+    except Exception as e:
+        logging.error(f"Error creating Azure AI Agent '{agent_name}': {str(e)}")
+        raise
 
 async def retrieve_all_agent_tools() -> List[Dict[str, Any]]:
     """
@@ -154,30 +165,35 @@ async def retrieve_all_agent_tools() -> List[Dict[str, Any]]:
             if not hasattr(agent, '_tools') or agent._tools is None:
                 continue
                 
+            # Make agent name more readable for display
+            display_name = agent_name.replace('Agent', '')
+            
             # Extract tool information from the agent
             for tool in agent._tools:
-                # Create a readable display name from the agent name
-                display_name = ' '.join([part for part in agent_name.replace('Agent', '').split() if part])
-                
-                # Inspect the tool to extract properties
-                parameters_str = "{}"
-                if hasattr(tool, 'metadata') and tool.metadata.get("parameters"):
-                    parameters_str = str(tool.metadata.get("parameters", {}))
-                
-                tool_info = {
-                    "agent": display_name,
-                    "function": tool.name,
-                    "description": tool.description if hasattr(tool, 'description') else "",
-                    "parameters": parameters_str
-                }
-                functions.append(tool_info)
+                try:
+                    # Extract parameters information
+                    parameters_info = {}
+                    if hasattr(tool, 'metadata') and tool.metadata.get('parameters'):
+                        parameters_info = tool.metadata.get('parameters', {})
+                    
+                    # Create tool info dictionary
+                    tool_info = {
+                        "agent": display_name,
+                        "function": tool.name,
+                        "description": tool.description if hasattr(tool, 'description') and tool.description else "",
+                        "parameters": str(parameters_info)
+                    }
+                    functions.append(tool_info)
+                except Exception as e:
+                    logging.warning(f"Error extracting tool information from {agent_name}.{tool.name}: {str(e)}")
         
         # Clean up cache
-        if temp_session_id in agent_instances:
-            del agent_instances[temp_session_id]
+        cache_key = f"{temp_session_id}_{temp_user_id}"
+        if cache_key in agent_instances:
+            del agent_instances[cache_key]
         
     except Exception as e:
-        logging.error(f"Error retrieving agent tools: {e}")
+        logging.error(f"Error retrieving agent tools: {str(e)}")
         # Fallback to loading tool information from JSON files
         functions = load_tools_from_json_files()
     
@@ -207,16 +223,19 @@ def load_tools_from_json_files() -> List[Dict[str, Any]]:
                         
                         # Process each tool in the file
                         for tool in tool_data.get("tools", []):
-                            functions.append({
-                                "agent": agent_name,
-                                "function": tool.get("name", ""),
-                                "description": tool.get("description", ""),
-                                "parameters": str(tool.get("parameters", {}))
-                            })
+                            try:
+                                functions.append({
+                                    "agent": agent_name,
+                                    "function": tool.get("name", ""),
+                                    "description": tool.get("description", ""),
+                                    "parameters": str(tool.get("parameters", {}))
+                                })
+                            except Exception as e:
+                                logging.warning(f"Error processing tool in {file}: {str(e)}")
                     except Exception as e:
-                        logging.error(f"Error loading tool file {file}: {e}")
+                        logging.error(f"Error loading tool file {file}: {str(e)}")
     except Exception as e:
-        logging.error(f"Error reading tools directory: {e}")
+        logging.error(f"Error reading tools directory: {str(e)}")
         
     return functions
 
@@ -266,7 +285,7 @@ async def rai_success(description: str) -> bool:
                 },
                 {"role": "user", "content": description},
             ],
-            "temperature": 0.0,
+            "temperature": 0.0,  # Using 0.0 for more deterministic responses
             "top_p": 0.95,
             "max_tokens": 800,
         }
@@ -288,6 +307,6 @@ async def rai_success(description: str) -> bool:
         return False
         
     except Exception as e:
-        logging.error(f"Error in RAI check: {e}")
+        logging.error(f"Error in RAI check: {str(e)}")
         # Default to allowing the operation if RAI check fails
         return True

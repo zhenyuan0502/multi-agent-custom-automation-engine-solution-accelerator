@@ -360,21 +360,13 @@ async def human_clarification_endpoint(
     # Send the clarification to the planner agent
     planner_agent = agents["PlannerAgent"]
     
-    # Convert clarification to kernel arguments
-    # For now, we're using a simple approach - in a real system, 
-    # the PlannerAgent would have a specific method to handle clarifications
-    kernel_args = KernelArguments(
-        plan_id=human_clarification.plan_id,
-        session_id=human_clarification.session_id,
-        human_clarification=human_clarification.human_clarification
-    )
+    # Convert clarification to JSON for proper processing
+    human_clarification_json = human_clarification.json()
     
-    # Store the clarification in the plan
-    memory_store = planner_agent._memory_store
-    plan = await memory_store.get_plan(human_clarification.plan_id)
-    if plan:
-        plan.human_clarification_request = human_clarification.human_clarification
-        await memory_store.update_plan(plan)
+    # Use the planner to handle the clarification
+    await planner_agent.handle_human_clarification(
+        KernelArguments(human_clarification_json=human_clarification_json)
+    )
 
     track_event_if_configured(
         "Completed Human clarification on the plan",
