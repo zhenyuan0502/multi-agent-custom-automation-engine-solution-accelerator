@@ -211,10 +211,11 @@ Provide a helpful response."""
                 )
                 
                 # Create the function with the prompt template config
-                # Avoid passing function_name separately since it's already in prompt_config
+                # Note: Don't include plugin_name in prompt_config AND as a parameter
                 function = KernelFunction.from_prompt(
-                    prompt_config,
-                    plugin_name=plugin_name  # Use the plugin_name defined once at the top
+                    prompt=prompt_config,  # Pass as 'prompt' parameter, not positionally
+                    kernel=kernel,
+                    plugin_name=plugin_name  # Provide plugin_name here only
                 )
                 
                 # Add to our list

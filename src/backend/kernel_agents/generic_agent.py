@@ -35,16 +35,21 @@ class GenericAgent(BaseAgent):
         """
         # Load configuration if tools not provided
         if tools is None:
+            # Load the generic tools configuration
             config = self.load_tools_config("generic", config_path)
             tools = self.get_tools_from_config(kernel, "generic", config_path)
+            
+            # Use system message from config if not explicitly provided
             if not system_message:
                 system_message = config.get("system_message", 
                     "You are a generic agent. You are used to handle generic tasks that a general Large Language Model can assist with. "
                     "You are being called as a fallback, when no other agents are able to use their specialised functions in order to solve "
                     "the user's task. Summarize back to the user what was done.")
+            
+            # Use agent name from config if available
             agent_name = config.get("agent_name", agent_name)
         
-        # Call the parent initializer with the agent_type parameter to ensure proper tool loading
+        # Call the parent initializer WITHOUT the agent_type parameter
         super().__init__(
             agent_name=agent_name,
             kernel=kernel,
@@ -52,12 +57,8 @@ class GenericAgent(BaseAgent):
             user_id=user_id,
             memory_store=memory_store,
             tools=tools,
-            system_message=system_message,
-            agent_type="generic"  # Explicitly provide the agent_type for proper initialization
+            system_message=system_message
         )
-        
-        # NOTE: We're removing the duplicate registration here because BaseAgent._register_functions()
-        # already registers the handle_action_request function with the kernel
     
     # Explicitly inherit handle_action_request from the parent class
     # This is not technically necessary but makes the inheritance explicit
