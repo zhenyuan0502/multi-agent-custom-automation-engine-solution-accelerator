@@ -264,14 +264,16 @@ Provide a helpful response."""
                 # Create a prompt template config
                 prompt_config = PromptTemplateConfig(
                     template=prompt,
-                    name="help_with_tasks",
+                    name=f"{agent_type}_help_with_tasks",
                     description=f"A helper function for {agent_type} tasks"
                 )
                 
                 # Create the function using the prompt_config with explicit plugin_name
                 function = KernelFunction.from_prompt(
-                    prompt_config,
-                    plugin_name=f"{agent_type}_fallback_plugin"  # Unique plugin name to avoid conflicts
+                    function_name=f"{agent_type}_help_with_tasks",
+                    plugin_name=f"{agent_type}_fallback_plugin",
+                    description=f"A helper function for {agent_type} tasks",
+                    prompt_template_config=prompt_config
                 )
                 
                 logger.info(f"Created fallback tool for {agent_type}")
