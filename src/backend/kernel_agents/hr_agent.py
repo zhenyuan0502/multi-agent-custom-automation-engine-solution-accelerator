@@ -7,7 +7,11 @@ from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 
 class HrAgent(BaseAgent):
-    """HR agent implementation using Semantic Kernel."""
+    """HR agent implementation using Semantic Kernel.
+    
+    This agent provides HR-related functions such as onboarding, benefits management,
+    and employee administration. All tools are loaded from hr_tools.json.
+    """
 
     def __init__(
         self,
@@ -34,10 +38,18 @@ class HrAgent(BaseAgent):
         """
         # Load configuration if tools not provided
         if tools is None:
+            # Load the HR tools configuration
             config = self.load_tools_config("hr", config_path)
             tools = self.get_tools_from_config(kernel, "hr", config_path)
+            
+            # Use system message from config if not explicitly provided
             if not system_message:
-                system_message = config.get("system_message", "You are an HR agent. You have knowledge about HR policies, procedures, and onboarding guidelines.")
+                system_message = config.get(
+                    "system_message", 
+                    "You are an AI Agent. You have knowledge about HR (e.g., human resources), policies, procedures, and onboarding guidelines."
+                )
+            
+            # Use agent name from config if available
             agent_name = config.get("agent_name", agent_name)
         
         super().__init__(
