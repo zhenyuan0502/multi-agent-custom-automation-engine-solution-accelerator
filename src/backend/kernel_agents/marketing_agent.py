@@ -7,7 +7,13 @@ from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 
 class MarketingAgent(BaseAgent):
-    """Marketing agent implementation using Semantic Kernel."""
+    """Marketing agent implementation using Semantic Kernel.
+    
+    This agent specializes in marketing strategies, campaign development,
+    content creation, and market analysis. It can create effective marketing
+    campaigns, analyze market trends, develop promotional content, and more.
+    All tools are loaded from marketing_tools.json.
+    """
 
     def __init__(
         self,
@@ -34,10 +40,18 @@ class MarketingAgent(BaseAgent):
         """
         # Load configuration if tools not provided
         if tools is None:
+            # Load the marketing tools configuration
             config = self.load_tools_config("marketing", config_path)
             tools = self.get_tools_from_config(kernel, "marketing", config_path)
+            
+            # Use system message from config if not explicitly provided
             if not system_message:
-                system_message = config.get("system_message", "You are a Marketing agent. You have knowledge about marketing strategies, branding, and customer engagement.")
+                system_message = config.get(
+                    "system_message", 
+                    "You are an AI Agent. You have knowledge about marketing, including campaigns, market research, and promotional activities."
+                )
+            
+            # Use agent name from config if available
             agent_name = config.get("agent_name", agent_name)
         
         super().__init__(
