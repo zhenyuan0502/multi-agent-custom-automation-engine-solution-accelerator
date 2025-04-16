@@ -144,14 +144,9 @@ class AgentFactory:
                 f"You are a helpful AI assistant specialized in {cls._agent_type_strings.get(agent_type, 'general')} tasks."
             )
         
-        # Special handling for GenericAgent - directly use its get_generic_tools function
-        if agent_type == AgentType.GENERIC:
-            from kernel_agents.generic_agent import get_generic_tools
-            tools = get_generic_tools(kernel)
-        else:
-            # For other agent types, use the standard tool loading mechanism
-            agent_type_str = cls._agent_type_strings.get(agent_type, agent_type.value.lower())
-            tools = await cls._load_tools_for_agent(kernel, agent_type_str)
+        # For other agent types, use the standard tool loading mechanism
+        agent_type_str = cls._agent_type_strings.get(agent_type, agent_type.value.lower())
+        tools = await cls._load_tools_for_agent(kernel, agent_type_str)
         
         # Create the agent instance
         try:
@@ -237,8 +232,8 @@ class AgentFactory:
     async def _load_tools_for_agent(cls, kernel: Kernel, agent_type: str) -> List[KernelFunction]:
         """Load tools for an agent from the tools directory.
         
-        This is a placeholder implementation. In a real system, you would load
-        tool configurations from JSON files and register them with the kernel.
+        This tries to load tool configurations from JSON files. If that fails,
+        it creates a simple helper function as a fallback.
         
         Args:
             kernel: The semantic kernel instance
@@ -249,29 +244,39 @@ class AgentFactory:
         """
         try:
             # Try to use the BaseAgent's tool loading mechanism
-            return BaseAgent.get_tools_from_config(kernel, agent_type)
+            tools = BaseAgent.get_tools_from_config(kernel, agent_type)
+            logger.info(f"Successfully loaded {len(tools)} tools for {agent_type}")
+            return tools
         except Exception as e:
-            # If it fails, create and return a dummy function to avoid initialization failure
             logger.warning(f"Failed to load tools for {agent_type}, using fallback: {e}")
             
-            # Create a dummy function that always works
-            from semantic_kernel.functions.kernel_function import KernelFunction
-            
-            function_name = "dummy_function"
-            dummy_prompt = f"You are helping with {agent_type} tasks.\n\n{{{{$input}}}}"
-            
-            dummy_function = KernelFunction.from_prompt(
-                function_name=function_name,
-                plugin_name=agent_type,
-                description=f"Fallback function for {agent_type}",
-                prompt=dummy_prompt  # This is the key - providing a prompt parameter
-            )
-            
-            # Add the function to the kernel
-            kernel.add_function(dummy_function)
-            
-            return [dummy_function]
-        
+            try:
+                # Use PromptTemplateConfig to create a simple tool
+                from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
+                
+                # Simple minimal prompt
+                prompt = f"You are a helpful assistant specialized in {agent_type} tasks.\n\nUser query: {{$input}}\n\nProvide a helpful response."
+                
+                # Create a prompt template config
+                prompt_config = PromptTemplateConfig(
+                    template=prompt,
+                    name="help_with_tasks",
+                    description=f"A helper function for {agent_type} tasks"
+                )
+                
+                # Create the function directly, avoiding any potential parameter conflicts
+                function = KernelFunction.from_prompt(
+                    prompt_config,
+                    plugin_name=f"{agent_type}_plugin"
+                )
+                
+                logger.info(f"Created fallback tool for {agent_type}")
+                return [function]
+            except Exception as fallback_error:
+                logger.error(f"Failed to create fallback tool for {agent_type}: {fallback_error}")
+                # Return an empty list if everything fails
+                return []
+
     @classmethod
     async def create_all_agents(
         cls,
