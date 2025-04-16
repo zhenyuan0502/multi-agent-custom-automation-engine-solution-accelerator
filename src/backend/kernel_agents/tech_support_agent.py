@@ -7,7 +7,12 @@ from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 
 class TechSupportAgent(BaseAgent):
-    """Tech Support agent implementation using Semantic Kernel."""
+    """Tech Support agent implementation using Semantic Kernel.
+    
+    This agent specializes in IT troubleshooting, system administration, network issues,
+    software installation, and general technical support. It can help with setting up software, 
+    accounts, devices, and other IT-related tasks.
+    """
 
     def __init__(
         self,
@@ -34,10 +39,18 @@ class TechSupportAgent(BaseAgent):
         """
         # Load configuration if tools not provided
         if tools is None:
+            # Load the tech support tools configuration
             config = self.load_tools_config("tech_support", config_path)
             tools = self.get_tools_from_config(kernel, "tech_support", config_path)
+            
+            # Use system message from config if not explicitly provided
             if not system_message:
-                system_message = config.get("system_message", "You are a Tech Support agent. You help users resolve technology-related problems.")
+                system_message = config.get(
+                    "system_message", 
+                    "You are an AI Agent who is knowledgeable about Information Technology. You are able to help with setting up software, accounts, devices, and other IT-related tasks. If you need additional information from the human user asking the question in order to complete a request, ask before calling a function."
+                )
+            
+            # Use agent name from config if available
             agent_name = config.get("agent_name", agent_name)
         
         super().__init__(
