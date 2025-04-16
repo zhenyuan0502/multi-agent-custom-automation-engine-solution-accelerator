@@ -162,37 +162,25 @@ class Config:
         Returns:
             A new AzureAIAgent instance
         """
-        # Get token for authentication
+        # Obtain an Azure AD token via DefaultAzureCredential; API key fallback removed.
         token = await Config.GetAzureOpenAIToken()
-        
+        if not token:
+            raise RuntimeError("Unable to acquire Azure OpenAI token; ensure DefaultAzureCredential is configured")
         try:
-            # Create the Azure AI Agent (with token if available)
-            if token:
-                agent = await AzureAIAgent.create_async(
-                    kernel=kernel,
-                    deployment_name=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
-                    endpoint=Config.AZURE_OPENAI_ENDPOINT,
-                    api_version=Config.AZURE_OPENAI_API_VERSION,
-                    token=token,
-                    agent_type=agent_type,
-                    agent_name=agent_name,
-                    system_prompt=instructions,
-                )
-            else:
-                # Use API key if token is not available
-                api_key = GetOptionalConfig("AZURE_OPENAI_API_KEY", "sk-...")
-                agent = await AzureAIAgent.create_async(
-                    kernel=kernel,
-                    deployment_name=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
-                    endpoint=Config.AZURE_OPENAI_ENDPOINT,
-                    api_key=api_key,
-                    api_version=Config.AZURE_OPENAI_API_VERSION,
-                    agent_type=agent_type,
-                    agent_name=agent_name,
-                    system_prompt=instructions,
-                )
-            
+            agent = await AzureAIAgent.create_async(
+                kernel=kernel,
+                deployment_name=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                endpoint=Config.AZURE_OPENAI_ENDPOINT,
+                api_version=Config.AZURE_OPENAI_API_VERSION,
+                token=token,
+                agent_type=agent_type,
+                agent_name=agent_name,
+                system_prompt=instructions,
+            )
             return agent
+        except AttributeError as ae:
+            logging.warning(f"AzureAIAgent.create_async not available, using kernel as fallback: {ae}")
+            return kernel
         except Exception as e:
             logging.error(f"Failed to create Azure AI Agent: {e}")
             raise

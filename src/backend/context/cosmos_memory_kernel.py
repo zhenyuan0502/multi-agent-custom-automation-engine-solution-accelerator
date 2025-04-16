@@ -420,7 +420,17 @@ class CosmosMemoryContext(MemoryStoreBase):
         await self.close()
 
     def __del__(self):
-        asyncio.create_task(self.close())
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop, run close synchronously to await the coroutine
+            try:
+                asyncio.run(self.close())
+            except Exception as e:
+                logging.warning(f"Error closing CosmosMemoryContext in __del__: {e}")
+        else:
+            # Schedule close if loop is running
+            loop.create_task(self.close())
 
     async def create_collection(self, collection_name: str) -> None:
         """Create a new collection. For CosmosDB, we don't need to create new collections

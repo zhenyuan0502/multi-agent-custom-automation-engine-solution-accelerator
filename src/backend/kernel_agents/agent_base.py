@@ -115,11 +115,10 @@ class BaseAgent:
             # Forward to the instance method
             return await self.handle_action_request(*args, **kwargs)
             
-        # Add the function to the kernel with the plugin_name parameter
-        self._kernel.add_function(
-            handle_action_request_wrapper,
-            plugin_name=self._agent_name
-        )
+        # Wrap the decorated function into a KernelFunction and register under this agent's plugin
+        kernel_func = KernelFunction.from_method(handle_action_request_wrapper)
+        # Use agent name as plugin for handler
+        self._kernel.add_function(self._agent_name, kernel_func)
 
     @staticmethod
     def create_dynamic_function(name: str, response_template: str, formatting_instr: str = DEFAULT_FORMATTING_INSTRUCTIONS) -> Callable[..., Awaitable[str]]:
@@ -205,7 +204,8 @@ class BaseAgent:
                 # Use the prompt template from the config if available
                 from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
                 
-                prompt_template = tool.get("prompt_template")
+                # Support either prompt_template or response_template from config
+                prompt_template = tool.get("prompt_template") or tool.get("response_template")
                 if not prompt_template:
                     # If no prompt_template is provided, create a default one
                     prompt_template = f"""You are performing the {function_name} function.
@@ -215,17 +215,15 @@ User input: {{$input}}
 
 Provide a helpful response."""
                 
-                # Create a function directly with the kernel's add_function_from_prompt
-                # This avoids issues with PromptTemplateConfig validation
-                function = kernel.add_function_from_prompt(
+                # Create and register a KernelFunction from prompt with the correct plugin name
+                kernel_func = KernelFunction.from_prompt(
                     function_name=function_name,
                     plugin_name=plugin_name,
-                    template=prompt_template,
-                    description=description
+                    description=description,
+                    prompt=prompt_template
                 )
-                
-                # Add to our list
-                kernel_functions.append(function)
+                kernel.add_function(plugin_name, kernel_func)
+                kernel_functions.append(kernel_func)
                 
                 logging.info(f"Successfully created tool '{function_name}' for {agent_type}")
                 
