@@ -184,26 +184,42 @@ class BaseAgent:
         # Convert the configured tools to kernel functions
         kernel_functions = []
         for tool in config.get("tools", []):
-            function_name = tool["name"]
-            description = tool.get("description", "")
-            
-            # Use KernelFunction.from_prompt instead of dynamic function creation
-            # IMPORTANT: Added a default prompt to fix the error
-            default_prompt = f"You are performing the {function_name} function.\n\n{{{{$input}}}}"
-            response_template = tool.get("response_template", "")
-            
-            # Create a KernelFunction with the required parameters
-            function = KernelFunction.from_prompt(
-                function_name=function_name,
-                plugin_name=agent_type,
-                description=description,
-                prompt=default_prompt  # This fixes the error
-            )
-            
-            # Register the function with the kernel
-            kernel.add_function(function)
-            # Add to our list
-            kernel_functions.append(function)
+            try:
+                function_name = tool["name"]
+                description = tool.get("description", "")
+                
+                # Create a prompt template for the function
+                from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
+                
+                # Use a minimal prompt based on the tool name and description
+                default_prompt = f"""You are performing the {function_name} function.
+Description: {description}
+
+User input: {{$input}}
+
+Provide a helpful response."""
+                
+                # Create a prompt template config
+                prompt_config = PromptTemplateConfig(
+                    template=default_prompt,
+                    name=function_name,
+                    description=description
+                )
+                
+                # Create the function WITHOUT specifying function_name (it's in the config)
+                # This avoids the duplicate parameter error
+                plugin_name = f"{agent_type}_plugin"
+                function = KernelFunction.from_prompt(
+                    prompt_config,
+                    plugin_name=plugin_name,
+                    description=description
+                )
+                
+                # Add to our list
+                kernel_functions.append(function)
+                
+            except Exception as e:
+                logging.warning(f"Failed to create tool '{tool.get('name', 'unknown')}': {e}")
                 
         return kernel_functions
 
