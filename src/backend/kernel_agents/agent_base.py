@@ -83,17 +83,13 @@ class BaseAgent:
         
         This method must be called after creating the agent to complete initialization.
         """
-        # Create Azure AI Agent instance
+        # Create Azure AI Agent or fallback
         self._agent = await Config.CreateAzureAIAgent(
             kernel=self._kernel,
             agent_name=self._agent_name,
             instructions=self._system_message
         )
-        
-        # Register tools with the agent
-        for tool in self._tools:
-            self._agent.add_function(tool)
-            
+        # Tools are registered with the kernel via get_tools_from_config
         return self
 
     def _default_system_message(self) -> str:
