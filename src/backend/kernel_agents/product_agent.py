@@ -15,7 +15,9 @@ class ProductAgent(BaseAgent):
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
-        product_tools: List[KernelFunction],
+        tools: List[KernelFunction] = None,
+        system_message: Optional[str] = None,
+        agent_name: str = "ProductAgent",
         config_path: Optional[str] = None
     ) -> None:
         """Initialize the Product Agent.
@@ -25,18 +27,25 @@ class ProductAgent(BaseAgent):
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
-            product_tools: List of tools available to this agent
+            tools: List of tools available to this agent (optional)
+            system_message: Optional system message for the agent
+            agent_name: Optional name for the agent (defaults to "ProductAgent")
             config_path: Optional path to the Product tools configuration file
         """
-        # Load configuration
-        config = self.load_tools_config("product", config_path)
+        # Load configuration if tools not provided
+        if tools is None:
+            config = self.load_tools_config("product", config_path)
+            tools = self.get_tools_from_config(kernel, "product", config_path)
+            if not system_message:
+                system_message = config.get("system_message", "You are a Product agent. You have knowledge about products, their specifications, pricing, availability, and features.")
+            agent_name = config.get("agent_name", agent_name)
         
         super().__init__(
-            agent_name="ProductAgent",
+            agent_name=agent_name,
             kernel=kernel,
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,
-            tools=product_tools,
-            system_message=config.get("system_message", "You are a Product agent. You have knowledge about products, their specifications, pricing, availability, and features. You can provide detailed information about products, compare them, and manage product data.")
+            tools=tools,
+            system_message=system_message
         )

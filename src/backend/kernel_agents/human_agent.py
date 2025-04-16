@@ -1,20 +1,13 @@
 import logging
-from typing import List, Annotated
+from typing import List, Optional
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
-from semantic_kernel.functions.kernel_function_decorator import kernel_function
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
-from models.messages_kernel import (
-    HumanFeedback,
-    HumanFeedbackStatus,
-    Step,
-    StepStatus,
-)
-
+from models.messages_kernel import HumanFeedback, Step, StepStatus
 
 class HumanAgent(BaseAgent):
     """Human agent implementation using Semantic Kernel."""
@@ -25,6 +18,10 @@ class HumanAgent(BaseAgent):
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
+        tools: List[KernelFunction] = None,
+        system_message: Optional[str] = None,
+        agent_name: str = "HumanAgent",
+        config_path: Optional[str] = None
     ) -> None:
         """Initialize the Human Agent.
         
@@ -33,72 +30,62 @@ class HumanAgent(BaseAgent):
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
+            tools: List of tools available to this agent (optional)
+            system_message: Optional system message for the agent
+            agent_name: Optional name for the agent (defaults to "HumanAgent")
+            config_path: Optional path to the Human tools configuration file
         """
+        # Load configuration if tools not provided
+        if tools is None:
+            config = self.load_tools_config("human", config_path)
+            tools = self.get_tools_from_config(kernel, "human", config_path)
+            if not system_message:
+                system_message = config.get("system_message", "You represent a human user in the system. You provide feedback and clarifications to help the AI agents better serve the user.")
+            agent_name = config.get("agent_name", agent_name)
+        
         super().__init__(
-            agent_name="HumanAgent",
+            agent_name=agent_name,
             kernel=kernel,
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,
-            tools=[],  # Human agent doesn't need tools
-            system_message="You are a human user. You will be asked for feedback on steps in a plan."
+            tools=tools,
+            system_message=system_message
         )
-
-    @kernel_function(
-        description="Handle feedback from a human on a planned step",
-        name="handle_human_feedback"
-    )
-    async def handle_human_feedback(
-        self, 
-        human_feedback_json: Annotated[str, "JSON string containing human feedback on a step"]
-    ) -> str:
-        """Handle feedback from a human user on a proposed step in the plan."""
-        try:
-            feedback = HumanFeedback.parse_raw(human_feedback_json)
-            
-            # Get the step from memory
-            step: Step = await self._memory_store.get_step(
-                feedback.step_id, feedback.session_id
-            )
-            
-            if step:
-                # Update the step based on feedback
-                step.human_approval_status = (
-                    HumanFeedbackStatus.accepted if feedback.approved 
-                    else HumanFeedbackStatus.rejected
-                )
-                
-                if feedback.human_feedback:
-                    step.human_feedback = feedback.human_feedback
-                
-                if feedback.updated_action:
-                    step.updated_action = feedback.updated_action
-                
-                # Update the step status
-                if feedback.approved:
-                    step.status = StepStatus.approved
-                    # Add a message to the chat history
-                    self._chat_history.append(
-                        {"role": "user", "content": f"I approve this step. {feedback.human_feedback or ''}"}
-                    )
-                else:
-                    step.status = StepStatus.rejected
-                    # Add a message to the chat history
-                    self._chat_history.append(
-                        {"role": "user", "content": f"I reject this step. {feedback.human_feedback or ''}"}
-                    )
-                
-                # Save the updated step
-                await self._memory_store.update_step(step)
-                
-                logging.info(f"Step {step.id} updated with human feedback. Approved: {feedback.approved}")
-                
-                # Return success message
-                return f"Human feedback processed for step {step.id}. Approved: {feedback.approved}"
-            else:
-                logging.error(f"Step {feedback.step_id} not found in session {feedback.session_id}")
-                return f"Error: Step {feedback.step_id} not found"
         
-        except Exception as e:
-            logging.exception(f"Error processing human feedback: {e}")
-            return f"Error processing human feedback: {str(e)}"
+    async def handle_human_feedback(self, kernel_arguments: KernelArguments) -> str:
+        """Handle human feedback on a step.
+        
+        Args:
+            kernel_arguments: Contains the human_feedback_json string
+            
+        Returns:
+            Status message
+        """
+        # Parse the human feedback
+        human_feedback_json = kernel_arguments["human_feedback_json"]
+        human_feedback = HumanFeedback.parse_raw(human_feedback_json)
+        
+        # Get the step
+        step = await self._memory_store.get_step(human_feedback.step_id, human_feedback.session_id)
+        if not step:
+            return f"Step {human_feedback.step_id} not found"
+        
+        # Update the step with the feedback
+        step.human_feedback = human_feedback.human_feedback
+        step.updated_action = human_feedback.updated_action
+        
+        if human_feedback.approved:
+            step.status = StepStatus.approved
+        else:
+            step.status = StepStatus.needs_update
+        
+        # Save the updated step
+        await self._memory_store.update_step(step)
+        
+        # If approved and updated action is provided, update the step's action
+        if human_feedback.approved and human_feedback.updated_action:
+            step.action = human_feedback.updated_action
+            await self._memory_store.update_step(step)
+        
+        return "Human feedback processed successfully"

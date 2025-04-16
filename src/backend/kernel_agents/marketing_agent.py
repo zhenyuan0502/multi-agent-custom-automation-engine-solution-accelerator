@@ -1,8 +1,7 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
-from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
@@ -16,7 +15,9 @@ class MarketingAgent(BaseAgent):
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
-        marketing_tools: List[KernelFunction],
+        tools: List[KernelFunction] = None,
+        system_message: Optional[str] = None,
+        agent_name: str = "MarketingAgent",
         config_path: Optional[str] = None
     ) -> None:
         """Initialize the Marketing Agent.
@@ -26,18 +27,25 @@ class MarketingAgent(BaseAgent):
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
-            marketing_tools: List of tools available to this agent
-            config_path: Optional path to the marketing tools configuration file
+            tools: List of tools available to this agent (optional)
+            system_message: Optional system message for the agent
+            agent_name: Optional name for the agent (defaults to "MarketingAgent")
+            config_path: Optional path to the Marketing tools configuration file
         """
-        # Load configuration
-        config = self.load_tools_config("marketing", config_path)
+        # Load configuration if tools not provided
+        if tools is None:
+            config = self.load_tools_config("marketing", config_path)
+            tools = self.get_tools_from_config(kernel, "marketing", config_path)
+            if not system_message:
+                system_message = config.get("system_message", "You are a Marketing agent. You have knowledge about marketing strategies, branding, and customer engagement.")
+            agent_name = config.get("agent_name", agent_name)
         
         super().__init__(
-            agent_name=config.get("agent_name", "MarketingAgent"),
+            agent_name=agent_name,
             kernel=kernel,
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,
-            tools=marketing_tools,
-            system_message=config.get("system_message", "You are a Marketing agent. You specialize in marketing strategy, campaign development, content creation, and market analysis.")
+            tools=tools,
+            system_message=system_message
         )

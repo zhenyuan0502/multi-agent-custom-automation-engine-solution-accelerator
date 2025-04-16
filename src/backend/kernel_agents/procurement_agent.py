@@ -15,7 +15,9 @@ class ProcurementAgent(BaseAgent):
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
-        procurement_tools: List[KernelFunction],
+        tools: List[KernelFunction] = None,
+        system_message: Optional[str] = None,
+        agent_name: str = "ProcurementAgent",
         config_path: Optional[str] = None
     ) -> None:
         """Initialize the Procurement Agent.
@@ -25,18 +27,25 @@ class ProcurementAgent(BaseAgent):
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
-            procurement_tools: List of tools available to this agent
-            config_path: Optional path to the procurement tools configuration file
+            tools: List of tools available to this agent (optional)
+            system_message: Optional system message for the agent
+            agent_name: Optional name for the agent (defaults to "ProcurementAgent")
+            config_path: Optional path to the Procurement tools configuration file
         """
-        # Load configuration
-        config = self.load_tools_config("procurement", config_path)
+        # Load configuration if tools not provided
+        if tools is None:
+            config = self.load_tools_config("procurement", config_path)
+            tools = self.get_tools_from_config(kernel, "procurement", config_path)
+            if not system_message:
+                system_message = config.get("system_message", "You are a Procurement agent. You have knowledge about purchasing processes, supplier management, and contract negotiations.")
+            agent_name = config.get("agent_name", agent_name)
         
         super().__init__(
-            agent_name=config.get("agent_name", "ProcurementAgent"),
+            agent_name=agent_name,
             kernel=kernel,
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,
-            tools=procurement_tools,
-            system_message=config.get("system_message", "You are a Procurement agent. You specialize in purchasing and vendor management.")
+            tools=tools,
+            system_message=system_message
         )
