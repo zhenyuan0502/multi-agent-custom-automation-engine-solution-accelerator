@@ -171,14 +171,9 @@ class CosmosMemoryContext(MemoryStoreBase):
         return plans[0] if plans else None
 
     async def get_plan(self, plan_id: str) -> Optional[Plan]:
-        """Retrieve a plan by its ID."""
-        query = "SELECT * FROM c WHERE c.id=@id AND c.data_type=@data_type"
-        parameters = [
-            {"name": "@id", "value": plan_id},
-            {"name": "@data_type", "value": "plan"},
-        ]
-        plans = await self.query_items(query, parameters, Plan)
-        return plans[0] if plans else None
+        return await self.get_item_by_id(
+            plan_id, partition_key=plan_id, model_class=Plan
+        )
 
     async def get_all_plans(self) -> List[Plan]:
         """Retrieve all plans."""
@@ -198,6 +193,17 @@ class CosmosMemoryContext(MemoryStoreBase):
         """Update an existing step in Cosmos DB."""
         await self.update_item(step)
 
+    async def get_steps_by_plan(self, plan_id: str) -> List[Step]:
+        """Retrieve all steps associated with a plan."""
+        query = "SELECT * FROM c WHERE c.plan_id=@plan_id AND c.user_id=@user_id AND c.data_type=@data_type"
+        parameters = [
+            {"name": "@plan_id", "value": plan_id},
+            {"name": "@data_type", "value": "step"},
+            {"name": "@user_id", "value": self.user_id},
+        ]
+        steps = await self.query_items(query, parameters, Step)
+        return steps
+
     async def get_steps_for_plan(self, plan_id: str, session_id: Optional[str] = None) -> List[Step]:
         """Retrieve all steps associated with a plan.
         
@@ -208,33 +214,12 @@ class CosmosMemoryContext(MemoryStoreBase):
         Returns:
             List of Step objects
         """
-        query = "SELECT * FROM c WHERE c.plan_id=@plan_id AND c.user_id=@user_id AND c.data_type=@data_type"
-        parameters = [
-            {"name": "@plan_id", "value": plan_id},
-            {"name": "@data_type", "value": "step"},
-            {"name": "@user_id", "value": self.user_id},
-        ]
-        steps = await self.query_items(query, parameters, Step)
-        return steps
+        return await self.get_steps_by_plan(plan_id)
 
     async def get_step(self, step_id: str, session_id: str) -> Optional[Step]:
-        """Retrieve a step by its ID.
-        
-        Args:
-            step_id: The ID of the step to retrieve
-            session_id: The session ID this step belongs to
-            
-        Returns:
-            Step object if found, None otherwise
-        """
-        query = "SELECT * FROM c WHERE c.id=@id AND c.session_id=@session_id AND c.data_type=@data_type"
-        parameters = [
-            {"name": "@id", "value": step_id},
-            {"name": "@session_id", "value": session_id},
-            {"name": "@data_type", "value": "step"},
-        ]
-        steps = await self.query_items(query, parameters, Step)
-        return steps[0] if steps else None
+        return await self.get_item_by_id(
+            step_id, partition_key=session_id, model_class=Step
+        )
 
     async def add_agent_message(self, message: AgentMessage) -> None:
         """Add an agent message to Cosmos DB.
@@ -342,68 +327,6 @@ class CosmosMemoryContext(MemoryStoreBase):
         """Save a ChatHistory object to the store."""
         for message in history.messages:
             await self.add_message(message)
-    
-    async def upsert_memory_record(self, collection: str, record: MemoryRecord) -> str:
-        """Implement MemoryStore interface - store a memory record."""
-        memory_dict = {
-            "id": record.id or str(uuid.uuid4()),
-            "session_id": self.session_id,
-            "user_id": self.user_id,
-            "data_type": "memory",
-            "collection": collection,
-            "text": record.text,
-            "description": record.description,
-            "external_source_name": record.external_source_name,
-            "additional_metadata": record.additional_metadata,
-            "embedding": record.embedding.tolist() if record.embedding is not None else None,
-            "key": record.key
-        }
-        
-        await self._container.upsert_item(body=memory_dict)
-        return memory_dict["id"]
-    
-    async def get_memory_record(self, collection: str, key: str, with_embedding: bool = False) -> Optional[MemoryRecord]:
-        """Implement MemoryStore interface - retrieve a memory record."""
-        query = """
-            SELECT * FROM c 
-            WHERE c.collection=@collection AND c.key=@key AND c.session_id=@session_id AND c.data_type=@data_type
-        """
-        parameters = [
-            {"name": "@collection", "value": collection},
-            {"name": "@key", "value": key},
-            {"name": "@session_id", "value": self.session_id},
-            {"name": "@data_type", "value": "memory"}
-        ]
-        
-        items = self._container.query_items(query=query, parameters=parameters)
-        async for item in items:
-            return MemoryRecord(
-                id=item["id"],
-                text=item["text"],
-                description=item["description"],
-                external_source_name=item["external_source_name"],
-                additional_metadata=item["additional_metadata"],
-                embedding=np.array(item["embedding"]) if with_embedding and "embedding" in item else None,
-                key=item["key"]
-            )
-        return None
-    
-    async def remove_memory_record(self, collection: str, key: str) -> None:
-        """Implement MemoryStore interface - remove a memory record."""
-        query = """
-            SELECT c.id FROM c 
-            WHERE c.collection=@collection AND c.key=@key AND c.session_id=@session_id AND c.data_type=@data_type
-        """
-        parameters = [
-            {"name": "@collection", "value": collection},
-            {"name": "@key", "value": key},
-            {"name": "@session_id", "value": self.session_id},
-            {"name": "@data_type", "value": "memory"}
-        ]
-        
-        items = self._container.query_items(query=query, parameters=parameters)
-        async for item in items:
-            await self._container.delete_item(item=item["id"], partition_key=self.session_id)
 
     async def get_data_by_type(self, data_type: str) -> List[BaseDataModel]:
         """Query the Cosmos DB for documents with the matching data_type, session_id and user_id."""
@@ -448,8 +371,8 @@ class CosmosMemoryContext(MemoryStoreBase):
         except Exception as e:
             logging.exception(f"Failed to delete items from Cosmos DB: {e}")
 
-    async def delete_all_items(self, data_type) -> None:
-        """Delete all items of a specific type from Cosmos DB."""
+    async def delete_all_messages(self, data_type) -> None:
+        """Delete all messages of a specific type from Cosmos DB."""
         query = "SELECT c.id, c.session_id FROM c WHERE c.data_type=@data_type AND c.user_id=@user_id"
         parameters = [
             {"name": "@data_type", "value": data_type},
@@ -457,8 +380,12 @@ class CosmosMemoryContext(MemoryStoreBase):
         ]
         await self.delete_items_by_query(query, parameters)
 
-    async def get_all_items(self) -> List[Dict[str, Any]]:
-        """Retrieve all items from Cosmos DB."""
+    async def delete_all_items(self, data_type) -> None:
+        """Delete all items of a specific type from Cosmos DB."""
+        await self.delete_all_messages(data_type)
+
+    async def get_all_messages(self) -> List[Dict[str, Any]]:
+        """Retrieve all messages from Cosmos DB."""
         await self.ensure_initialized()
         if self._container is None:
             return []
@@ -475,8 +402,12 @@ class CosmosMemoryContext(MemoryStoreBase):
                 messages_list.append(item)
             return messages_list
         except Exception as e:
-            logging.exception(f"Failed to get items from Cosmos DB: {e}")
+            logging.exception(f"Failed to get messages from Cosmos DB: {e}")
             return []
+
+    async def get_all_items(self) -> List[Dict[str, Any]]:
+        """Retrieve all items from Cosmos DB."""
+        return await self.get_all_messages()
 
     async def close(self) -> None:
         """Close the Cosmos DB client."""
@@ -547,6 +478,68 @@ class CosmosMemoryContext(MemoryStoreBase):
                 )
         except Exception as e:
             logging.exception(f"Failed to delete collection from Cosmos DB: {e}")
+
+    async def upsert_memory_record(self, collection: str, record: MemoryRecord) -> str:
+        """Store a memory record."""
+        memory_dict = {
+            "id": record.id or str(uuid.uuid4()),
+            "session_id": self.session_id,
+            "user_id": self.user_id,
+            "data_type": "memory",
+            "collection": collection,
+            "text": record.text,
+            "description": record.description,
+            "external_source_name": record.external_source_name,
+            "additional_metadata": record.additional_metadata,
+            "embedding": record.embedding.tolist() if record.embedding is not None else None,
+            "key": record.key
+        }
+        
+        await self._container.upsert_item(body=memory_dict)
+        return memory_dict["id"]
+
+    async def get_memory_record(self, collection: str, key: str, with_embedding: bool = False) -> Optional[MemoryRecord]:
+        """Retrieve a memory record."""
+        query = """
+            SELECT * FROM c 
+            WHERE c.collection=@collection AND c.key=@key AND c.session_id=@session_id AND c.data_type=@data_type
+        """
+        parameters = [
+            {"name": "@collection", "value": collection},
+            {"name": "@key", "value": key},
+            {"name": "@session_id", "value": self.session_id},
+            {"name": "@data_type", "value": "memory"}
+        ]
+        
+        items = self._container.query_items(query=query, parameters=parameters)
+        async for item in items:
+            return MemoryRecord(
+                id=item["id"],
+                text=item["text"],
+                description=item["description"],
+                external_source_name=item["external_source_name"],
+                additional_metadata=item["additional_metadata"],
+                embedding=np.array(item["embedding"]) if with_embedding and "embedding" in item else None,
+                key=item["key"]
+            )
+        return None
+
+    async def remove_memory_record(self, collection: str, key: str) -> None:
+        """Remove a memory record."""
+        query = """
+            SELECT c.id FROM c 
+            WHERE c.collection=@collection AND c.key=@key AND c.session_id=@session_id AND c.data_type=@data_type
+        """
+        parameters = [
+            {"name": "@collection", "value": collection},
+            {"name": "@key", "value": key},
+            {"name": "@session_id", "value": self.session_id},
+            {"name": "@data_type", "value": "memory"}
+        ]
+        
+        items = self._container.query_items(query=query, parameters=parameters)
+        async for item in items:
+            await self._container.delete_item(item=item["id"], partition_key=self.session_id)
 
     async def upsert_async(self, collection_name: str, record: Dict[str, Any]) -> str:
         """Helper method to insert documents directly."""
