@@ -3,11 +3,17 @@ from typing import List, Optional
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
+from semantic_kernel.functions.kernel_function_decorator import kernel_function
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 
+# Use the kernel_function decorator for proper registration
+@kernel_function(
+    description="This is a placeholder function, for a proper Azure AI Search RAG process.",
+    name="dummy_function"
+)
 async def dummy_function() -> str:
     """This is a placeholder function, for a proper Azure AI Search RAG process."""
     return "This is a placeholder function"
@@ -15,15 +21,10 @@ async def dummy_function() -> str:
 # Create the GenericTools function
 def get_generic_tools(kernel: sk.Kernel) -> List[KernelFunction]:
     """Get the list of tools available for the Generic Agent."""
-    # Convert the function to a kernel function
-    dummy_kernel_function = kernel.register_native_function(
-        function=dummy_function,
-        name="dummy_function",
-        description="This is a placeholder"
-    )
-    
-    # Return the list of kernel functions
-    return [dummy_kernel_function]
+    # Register the function with the kernel and get it back as a kernel function
+    kernel.add_function(dummy_function)
+    # Return the list of registered functions
+    return [kernel.get_function("dummy_function")]
 
 class GenericAgent(BaseAgent):
     """Generic agent implementation using Semantic Kernel."""

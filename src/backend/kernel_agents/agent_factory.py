@@ -144,17 +144,19 @@ class AgentFactory:
                 f"You are a helpful AI assistant specialized in {cls._agent_type_strings.get(agent_type, 'general')} tasks."
             )
         
-        # Get the agent_type string
-        agent_type_str = cls._agent_type_strings.get(agent_type, agent_type.value.lower())
-        
-        # Create a list of tools for this agent
-        # In a real implementation, this would be loaded from configuration
-        tools = await cls._load_tools_for_agent(kernel, agent_type_str)
+        # Special handling for GenericAgent - directly use its get_generic_tools function
+        if agent_type == AgentType.GENERIC:
+            from kernel_agents.generic_agent import get_generic_tools
+            tools = get_generic_tools(kernel)
+        else:
+            # For other agent types, use the standard tool loading mechanism
+            agent_type_str = cls._agent_type_strings.get(agent_type, agent_type.value.lower())
+            tools = await cls._load_tools_for_agent(kernel, agent_type_str)
         
         # Create the agent instance
         try:
             agent = agent_class(
-                agent_name=agent_type_str,
+                agent_name=cls._agent_type_strings.get(agent_type, agent_type.value.lower()),
                 kernel=kernel,
                 session_id=session_id,
                 user_id=user_id,
@@ -245,8 +247,30 @@ class AgentFactory:
         Returns:
             A list of kernel functions for the agent
         """
-        # Use the BaseAgent's tool loading mechanism
-        return BaseAgent.get_tools_from_config(kernel, agent_type)
+        try:
+            # Try to use the BaseAgent's tool loading mechanism
+            return BaseAgent.get_tools_from_config(kernel, agent_type)
+        except Exception as e:
+            # If it fails, create and return a dummy function to avoid initialization failure
+            logger.warning(f"Failed to load tools for {agent_type}, using fallback: {e}")
+            
+            # Create a dummy function that always works
+            from semantic_kernel.functions.kernel_function import KernelFunction
+            
+            function_name = "dummy_function"
+            dummy_prompt = f"You are helping with {agent_type} tasks.\n\n{{{{$input}}}}"
+            
+            dummy_function = KernelFunction.from_prompt(
+                function_name=function_name,
+                plugin_name=agent_type,
+                description=f"Fallback function for {agent_type}",
+                prompt=dummy_prompt  # This is the key - providing a prompt parameter
+            )
+            
+            # Add the function to the kernel
+            kernel.add_function(dummy_function)
+            
+            return [dummy_function]
         
     @classmethod
     async def create_all_agents(

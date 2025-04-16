@@ -1,24 +1,32 @@
 {
+  "agent_name": "GenericAgent",
+  "system_message": "You are a Generic agent that can help with general questions and provide basic information. You can search for information and perform simple calculations.",
   "tools": [
     {
       "name": "search",
       "description": "Performs a search for information",
-      "parameters": {
-        "query": {
+      "parameters": [
+        {
+          "name": "query",
+          "description": "The search query",
           "type": "string",
-          "description": "The search query"
+          "required": true
         }
-      }
+      ],
+      "response_template": "##### Search Results\n**Query:** {query}\n\nHere are the search results for your query."
     },
     {
       "name": "calculator",
       "description": "Performs mathematical calculations",
-      "parameters": {
-        "expression": {
+      "parameters": [
+        {
+          "name": "expression",
+          "description": "The mathematical expression to calculate",
           "type": "string",
-          "description": "The mathematical expression to calculate"
+          "required": true
         }
-      }
+      ],
+      "response_template": "##### Calculation Result\n**Expression:** {expression}\n\nThe result of the calculation has been computed."
     }
   ]
 }

@@ -2,6 +2,7 @@ from typing import List
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
+from semantic_kernel.functions.kernel_function_decorator import kernel_function
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
@@ -9,6 +10,10 @@ from context.cosmos_memory_kernel import CosmosMemoryContext
 formatting_instructions = "Instructions: returning the output of this function call verbatim to the user in markdown. Then write AGENT SUMMARY: and then include a summary of what you did."
 
 # Define Product tools (functions)
+@kernel_function(
+    description="Get detailed information about a product.",
+    name="get_product_info"
+)
 async def get_product_info(product_id: str) -> str:
     """Get detailed information about a product."""
     # In a real system, this would query a database or API
@@ -45,6 +50,10 @@ async def get_product_info(product_id: str) -> str:
         f"{formatting_instructions}"
     )
 
+@kernel_function(
+    description="Update the price of a product.",
+    name="update_product_price"
+)
 async def update_product_price(product_id: str, new_price: float) -> str:
     """Update the price of a product."""
     # In a real system, this would update a database
@@ -56,6 +65,10 @@ async def update_product_price(product_id: str, new_price: float) -> str:
         f"{formatting_instructions}"
     )
 
+@kernel_function(
+    description="Check the availability of a product.",
+    name="check_product_availability"
+)
 async def check_product_availability(product_id: str) -> str:
     """Check the availability of a product."""
     # Mock data - in a real system this would check inventory
@@ -77,6 +90,10 @@ async def check_product_availability(product_id: str) -> str:
         f"{formatting_instructions}"
     )
 
+@kernel_function(
+    description="Add a new product to the catalog.",
+    name="add_product_to_catalog"
+)
 async def add_product_to_catalog(
     product_name: str, description: str, price: float, category: str
 ) -> str:
@@ -92,6 +109,10 @@ async def add_product_to_catalog(
         f"{formatting_instructions}"
     )
 
+@kernel_function(
+    description="Update the description of a product.",
+    name="update_product_description"
+)
 async def update_product_description(product_id: str, new_description: str) -> str:
     """Update the description of a product."""
     # In a real system, this would update a database
@@ -103,6 +124,10 @@ async def update_product_description(product_id: str, new_description: str) -> s
         f"{formatting_instructions}"
     )
 
+@kernel_function(
+    description="Get reviews for a product.",
+    name="get_product_reviews"
+)
 async def get_product_reviews(product_id: str) -> str:
     """Get reviews for a product."""
     # Mock data - in a real system this would query a database
@@ -143,6 +168,10 @@ async def get_product_reviews(product_id: str) -> str:
         f"{formatting_instructions}"
     )
 
+@kernel_function(
+    description="Compare two products.",
+    name="compare_products"
+)
 async def compare_products(product_id1: str, product_id2: str) -> str:
     """Compare two products."""
     # Mock data - in a real system this would query a database
@@ -176,6 +205,10 @@ async def compare_products(product_id1: str, product_id2: str) -> str:
         f"{formatting_instructions}"
     )
 
+@kernel_function(
+    description="Get related products for a product.",
+    name="get_related_products"
+)
 async def get_related_products(product_id: str) -> str:
     """Get related products for a product."""
     # Mock data - in a real system this would use a recommendation engine
@@ -212,6 +245,10 @@ async def get_related_products(product_id: str) -> str:
         f"{formatting_instructions}"
     )
 
+@kernel_function(
+    description="Update the inventory for a product.",
+    name="update_product_inventory"
+)
 async def update_product_inventory(product_id: str, quantity: int) -> str:
     """Update the inventory for a product."""
     # In a real system, this would update a database
@@ -223,6 +260,10 @@ async def update_product_inventory(product_id: str, quantity: int) -> str:
         f"{formatting_instructions}"
     )
 
+@kernel_function(
+    description="Create a product bundle.",
+    name="create_product_bundle"
+)
 async def create_product_bundle(
     bundle_name: str, product_ids: str, bundle_price: float
 ) -> str:
@@ -240,28 +281,25 @@ async def create_product_bundle(
 # Create the ProductTools function
 def get_product_tools(kernel: sk.Kernel) -> List[KernelFunction]:
     """Get the list of product tools for the Product Agent."""
+    # Define all product functions
     product_functions = [
-        (get_product_info, "Get detailed information about a product."),
-        (update_product_price, "Update the price of a product."),
-        (check_product_availability, "Check the availability of a product."),
-        (add_product_to_catalog, "Add a new product to the catalog."),
-        (update_product_description, "Update the description of a product."),
-        (get_product_reviews, "Get reviews for a product."),
-        (compare_products, "Compare two products."),
-        (get_related_products, "Get related products for a product."),
-        (update_product_inventory, "Update the inventory for a product."),
-        (create_product_bundle, "Create a product bundle.")
+        get_product_info,
+        update_product_price,
+        check_product_availability,
+        add_product_to_catalog,
+        update_product_description,
+        get_product_reviews,
+        compare_products,
+        get_related_products,
+        update_product_inventory,
+        create_product_bundle
     ]
     
-    # Convert the functions to kernel functions
+    # Register each function with the kernel and collect KernelFunction objects
     kernel_functions = []
-    for func, description in product_functions:
-        kernel_function = kernel.register_native_function(
-            function=func,
-            name=func.__name__,
-            description=description
-        )
-        kernel_functions.append(kernel_function)
+    for func in product_functions:
+        kernel.add_function(func)
+        kernel_functions.append(kernel.get_function(func.__name__))
     
     return kernel_functions
 

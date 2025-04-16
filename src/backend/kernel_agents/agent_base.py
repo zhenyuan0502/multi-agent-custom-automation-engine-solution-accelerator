@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Mapping, Optional, Callable, Awaitable
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
-# Updated import for KernelArguments
+from semantic_kernel.functions.kernel_function_decorator import kernel_function
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
@@ -121,6 +121,11 @@ class BaseAgent:
         Returns:
             A dynamic async function that can be registered with the semantic kernel
         """
+        # Create a dynamic function decorated with @kernel_function
+        @kernel_function(
+            description=f"Dynamic function: {name}",
+            name=name
+        )
         async def dynamic_function(*args, **kwargs) -> str:
             try:
                 # Format the template with the provided kwargs
@@ -130,8 +135,6 @@ class BaseAgent:
             except Exception as e:
                 return f"Error processing {name}: {str(e)}"
         
-        # Set the function name
-        dynamic_function.__name__ = name
         return dynamic_function
 
     @staticmethod
@@ -148,7 +151,7 @@ class BaseAgent:
         if config_path is None:
             # Default path relative to the tools directory
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            backend_dir = os.path.dirname(os.path.dirname(current_dir))
+            backend_dir = os.path.dirname(current_dir)  # Just one level up to get to backend dir
             config_path = os.path.join(backend_dir, "tools", f"{agent_type}_tools.json")
         
         try:
@@ -159,7 +162,7 @@ class BaseAgent:
             # Return empty default configuration
             return {
                 "agent_name": f"{agent_type.capitalize()}Agent",
-                "system_message": "",
+                "system_message": "You are an AI assistant",
                 "tools": []
             }
 
@@ -181,20 +184,27 @@ class BaseAgent:
         # Convert the configured tools to kernel functions
         kernel_functions = []
         for tool in config.get("tools", []):
-            # Create the dynamic function
-            func = cls.create_dynamic_function(
-                name=tool["name"],
-                response_template=tool.get("response_template", "")
+            function_name = tool["name"]
+            description = tool.get("description", "")
+            
+            # Use KernelFunction.from_prompt instead of dynamic function creation
+            # IMPORTANT: Added a default prompt to fix the error
+            default_prompt = f"You are performing the {function_name} function.\n\n{{{{$input}}}}"
+            response_template = tool.get("response_template", "")
+            
+            # Create a KernelFunction with the required parameters
+            function = KernelFunction.from_prompt(
+                function_name=function_name,
+                plugin_name=agent_type,
+                description=description,
+                prompt=default_prompt  # This fixes the error
             )
             
-            # Register with the kernel
-            kernel_function = kernel.register_native_function(
-                function=func,
-                name=tool["name"],
-                description=tool.get("description", "")
-            )
-            kernel_functions.append(kernel_function)
-        
+            # Register the function with the kernel
+            kernel.add_function(function)
+            # Add to our list
+            kernel_functions.append(function)
+                
         return kernel_functions
 
     async def handle_action_request(
