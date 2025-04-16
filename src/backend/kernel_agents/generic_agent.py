@@ -44,6 +44,7 @@ class GenericAgent(BaseAgent):
                     "the user's task. Summarize back to the user what was done.")
             agent_name = config.get("agent_name", agent_name)
         
+        # Call the parent initializer with the agent_type parameter to ensure proper tool loading
         super().__init__(
             agent_name=agent_name,
             kernel=kernel,
@@ -51,5 +52,24 @@ class GenericAgent(BaseAgent):
             user_id=user_id,
             memory_store=memory_store,
             tools=tools,
-            system_message=system_message
+            system_message=system_message,
+            agent_type="generic"  # Explicitly provide the agent_type for proper initialization
         )
+        
+        # NOTE: We're removing the duplicate registration here because BaseAgent._register_functions()
+        # already registers the handle_action_request function with the kernel
+    
+    # Explicitly inherit handle_action_request from the parent class
+    # This is not technically necessary but makes the inheritance explicit
+    async def handle_action_request(self, action_request_json: str) -> str:
+        """Handle an action request from another agent or the system.
+        
+        This method is inherited from BaseAgent but explicitly included here for clarity.
+        
+        Args:
+            action_request_json: The action request as a JSON string
+            
+        Returns:
+            A JSON string containing the action response
+        """
+        return await super().handle_action_request(action_request_json)

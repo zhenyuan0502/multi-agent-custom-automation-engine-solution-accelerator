@@ -254,8 +254,15 @@ class AgentFactory:
                 # Use PromptTemplateConfig to create a simple tool
                 from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
                 
+                # Create plugin name once to avoid duplication issues
+                plugin_name = f"{agent_type}_plugin"
+                
                 # Simple minimal prompt
-                prompt = f"You are a helpful assistant specialized in {agent_type} tasks.\n\nUser query: {{$input}}\n\nProvide a helpful response."
+                prompt = f"""You are a helpful assistant specialized in {agent_type} tasks.
+
+User query: {{$input}}
+
+Provide a helpful response."""
                 
                 # Create a prompt template config
                 prompt_config = PromptTemplateConfig(
@@ -264,10 +271,11 @@ class AgentFactory:
                     description=f"A helper function for {agent_type} tasks"
                 )
                 
-                # Create the function directly, avoiding any potential parameter conflicts
+                # Create the function directly, avoiding parameter conflicts
+                # Note: We're only passing plugin_name, not function_name, to avoid conflicts
                 function = KernelFunction.from_prompt(
                     prompt_config,
-                    plugin_name=f"{agent_type}_plugin"
+                    plugin_name=plugin_name
                 )
                 
                 logger.info(f"Created fallback tool for {agent_type}")

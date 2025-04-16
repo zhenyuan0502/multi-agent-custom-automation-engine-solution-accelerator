@@ -13,6 +13,7 @@
           "required": true
         }
       ],
+      "prompt_template": "You are performing a search operation.\n\nSearch query: {{$input}}\n\nProvide a comprehensive and helpful answer based on the search query.",
       "response_template": "##### Search Results\n**Query:** {query}\n\nHere are the search results for your query."
     },
     {
@@ -26,6 +27,7 @@
           "required": true
         }
       ],
+      "prompt_template": "You are performing a calculation operation.\n\nExpression: {{$input}}\n\nPlease calculate the result of this mathematical expression.",
       "response_template": "##### Calculation Result\n**Expression:** {expression}\n\nThe result of the calculation has been computed."
     }
   ]
