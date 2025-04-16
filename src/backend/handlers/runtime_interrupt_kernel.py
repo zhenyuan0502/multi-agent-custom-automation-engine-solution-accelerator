@@ -32,7 +32,18 @@ class NeedsUserInputHandler:
         self.messages: List[Dict[str, Any]] = []
 
     async def on_message(self, message: Any, sender_type: str = "unknown_type", sender_key: str = "unknown_key") -> Any:
-        """Process an incoming message."""
+        """Process an incoming message.
+        
+        This is equivalent to the on_publish method in the original Autogen version.
+        
+        Args:
+            message: The message to process
+            sender_type: The type of the sender (equivalent to sender.type in Autogen)
+            sender_key: The key of the sender (equivalent to sender.key in Autogen)
+            
+        Returns:
+            The original message (for pass-through functionality)
+        """
         print(
             f"NeedsUserInputHandler received message: {message} from sender: {sender_type}/{sender_key}"
         )
@@ -45,9 +56,11 @@ class NeedsUserInputHandler:
             })
             print("Captured question for human in NeedsUserInputHandler")
         elif isinstance(message, GroupChatMessage):
+            # Ensure we extract content consistently with the original implementation
+            content = message.body.content if hasattr(message.body, 'content') else str(message.body)
             self.messages.append({
                 "agent": {"type": sender_type, "key": sender_key},
-                "content": message.body.content if hasattr(message.body, 'content') else str(message.body),
+                "content": content,
             })
             print(f"Captured group chat message in NeedsUserInputHandler - {message}")
         elif isinstance(message, dict) and "content" in message:
@@ -87,12 +100,23 @@ class AssistantResponseHandler:
         self.assistant_response: Optional[str] = None
 
     async def on_message(self, message: Any, sender_type: str = None) -> Any:
-        """Process an incoming message from an assistant."""
+        """Process an incoming message from an assistant.
+        
+        This is equivalent to the on_publish method in the original Autogen version.
+        
+        Args:
+            message: The message to process
+            sender_type: The type of the sender (equivalent to sender.type in Autogen)
+            
+        Returns:
+            The original message (for pass-through functionality)
+        """
         print(
             f"on_message called in AssistantResponseHandler with message from sender: {sender_type} - {message}"
         )
         
         if hasattr(message, "body") and sender_type in ["writer", "editor"]:
+            # Ensure we're handling the content consistently with the original implementation
             self.assistant_response = message.body.content if hasattr(message.body, 'content') else str(message.body)
             print("Assistant response set in AssistantResponseHandler")
         elif isinstance(message, dict) and "value" in message and sender_type:
@@ -117,12 +141,21 @@ class AssistantResponseHandler:
 
 # Helper function to register handlers with a Semantic Kernel instance
 def register_handlers(kernel: sk.Kernel, session_id: str) -> tuple:
-    """Register interrupt handlers with a Semantic Kernel instance."""
+    """Register interrupt handlers with a Semantic Kernel instance.
+    
+    This is a new function that provides Semantic Kernel integration.
+    
+    Args:
+        kernel: The Semantic Kernel instance
+        session_id: The session identifier
+        
+    Returns:
+        Tuple of (NeedsUserInputHandler, AssistantResponseHandler)
+    """
     user_input_handler = NeedsUserInputHandler()
     assistant_handler = AssistantResponseHandler()
     
-    # Create kernel plugins for the handlers
-    # We'll add these as functions that can be called from the kernel
+    # Create kernel functions for the handlers
     kernel.add_function(
         user_input_handler.on_message,
         plugin_name=f"user_input_handler_{session_id}",
@@ -135,22 +168,31 @@ def register_handlers(kernel: sk.Kernel, session_id: str) -> tuple:
         function_name="on_message"
     )
     
-    # Store handler references in kernel's memory for later retrieval
-    kernel.register_memory_record(f"input_handler_{session_id}", user_input_handler)
-    kernel.register_memory_record(f"response_handler_{session_id}", assistant_handler)
+    # Store handler references in kernel's context variables for later retrieval
+    kernel.set_variable(f"input_handler_{session_id}", user_input_handler)
+    kernel.set_variable(f"response_handler_{session_id}", assistant_handler)
     
     print(f"Registered handlers for session {session_id} with kernel")
     return user_input_handler, assistant_handler
 
 # Helper function to get the registered handlers for a session
 def get_handlers(kernel: sk.Kernel, session_id: str) -> tuple:
-    """Get the registered interrupt handlers for a session."""
-    user_input_handler = kernel.recall_memory_record(f"input_handler_{session_id}")
-    assistant_handler = kernel.recall_memory_record(f"response_handler_{session_id}")
+    """Get the registered interrupt handlers for a session.
     
-    # Check if the handlers exist
+    This is a new function that provides Semantic Kernel integration.
+    
+    Args:
+        kernel: The Semantic Kernel instance
+        session_id: The session identifier
+        
+    Returns:
+        Tuple of (NeedsUserInputHandler, AssistantResponseHandler)
+    """
+    user_input_handler = kernel.get_variable(f"input_handler_{session_id}", None)
+    assistant_handler = kernel.get_variable(f"response_handler_{session_id}", None)
+    
+    # Create new handlers if they don't exist
     if not user_input_handler or not assistant_handler:
-        # Create new handlers if they don't exist
         return register_handlers(kernel, session_id)
     
     return user_input_handler, assistant_handler
