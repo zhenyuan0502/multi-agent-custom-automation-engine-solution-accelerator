@@ -409,28 +409,24 @@ class CosmosMemoryContext(MemoryStoreBase):
         """Retrieve all items from Cosmos DB."""
         return await self.get_all_messages()
 
-    async def close(self) -> None:
+    def close(self) -> None:
         """Close the Cosmos DB client."""
-        pass  # Implement if needed for Semantic Kernel
+        # No-op or implement synchronous cleanup if required
+        return
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        await self.close()
+        # Call synchronous close
+        self.close()
 
     def __del__(self):
         try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            # No running loop, run close synchronously to await the coroutine
-            try:
-                asyncio.run(self.close())
-            except Exception as e:
-                logging.warning(f"Error closing CosmosMemoryContext in __del__: {e}")
-        else:
-            # Schedule close if loop is running
-            loop.create_task(self.close())
+            # Synchronous close
+            self.close()
+        except Exception as e:
+            logging.warning(f"Error closing CosmosMemoryContext in __del__: {e}")
 
     async def create_collection(self, collection_name: str) -> None:
         """Create a new collection. For CosmosDB, we don't need to create new collections

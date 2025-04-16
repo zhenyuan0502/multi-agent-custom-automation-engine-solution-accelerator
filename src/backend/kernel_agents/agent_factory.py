@@ -209,8 +209,8 @@ class AgentFactory:
         # Create a kernel
         kernel = Config.CreateKernel()
         
-        # Create the Azure AI Agent
-        agent = Config.CreateAzureAIAgent(
+        # Await creation since CreateAzureAIAgent is async
+        agent = await Config.CreateAzureAIAgent(
             kernel=kernel,
             agent_name=agent_name,
             instructions=system_prompt
