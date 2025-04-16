@@ -56,16 +56,11 @@ class Config:
         "FRONTEND_SITE_NAME", "http://127.0.0.1:3000"
     )
 
-    # Flag to indicate if we should use in-memory storage instead of CosmosDB
-    USE_IN_MEMORY_STORAGE = GetBoolConfig("USE_IN_MEMORY_STORAGE") or True
+    # Removed USE_IN_MEMORY_STORAGE flag as we're only using CosmosDB now
 
     __azure_credentials = None
     __comos_client = None
     __cosmos_database = None
-    __azure_ai_agent_config = None
-
-    # Cache for in-memory storage contexts
-    __in_memory_contexts = {}
 
     @staticmethod
     def GetAzureCredentials():
@@ -88,18 +83,11 @@ class Config:
 
     @staticmethod
     def GetCosmosDatabaseClient():
-        """Get a Cosmos DB client for the configured database or in-memory alternative.
+        """Get a Cosmos DB client for the configured database.
         
         Returns:
-            A Cosmos DB database client or in-memory alternative
+            A Cosmos DB database client
         """
-        # If we're using in-memory storage, return None so the CosmosMemoryContext will create an in-memory context
-        if Config.USE_IN_MEMORY_STORAGE:
-            from context.in_memory_context import InMemoryContext
-            logging.info("Using in-memory storage instead of CosmosDB")
-            return None
-
-        # Try to connect to real CosmosDB
         try:
             if Config.__comos_client is None:
                 Config.__comos_client = CosmosClient(
@@ -113,9 +101,8 @@ class Config:
 
             return Config.__cosmos_database
         except Exception as e:
-            logging.warning(f"Failed to create CosmosDB client: {e}. Using in-memory storage instead.")
-            Config.USE_IN_MEMORY_STORAGE = True
-            return None
+            logging.error(f"Failed to create CosmosDB client: {e}. CosmosDB is required for this application.")
+            raise
 
     @staticmethod
     def GetTokenProvider(scopes):

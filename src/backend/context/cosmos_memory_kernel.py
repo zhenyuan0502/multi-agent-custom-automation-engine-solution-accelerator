@@ -13,11 +13,10 @@ from semantic_kernel.contents import ChatMessageContent, ChatHistory, AuthorRole
 
 from config_kernel import Config
 from models.messages_kernel import BaseDataModel, Plan, Session, Step, AgentMessage
-from context.in_memory_context import InMemoryContext
 
 
 class CosmosMemoryContext(MemoryStoreBase):
-    """A buffered chat completion context that also saves messages and data models to Cosmos DB or in-memory fallback."""
+    """A buffered chat completion context that saves messages and data models to Cosmos DB."""
 
     MODEL_CLASS_MAPPING = {
         "session": Session,
@@ -42,59 +41,38 @@ class CosmosMemoryContext(MemoryStoreBase):
         self.session_id = session_id
         self.user_id = user_id
         self._initialized = asyncio.Event()
-        self._in_memory_context = None
         
         # Auto-initialize the container
         asyncio.create_task(self.initialize())
 
     async def initialize(self):
-        """Initialize the memory context - either using CosmosDB or in-memory alternative."""
+        """Initialize the memory context using CosmosDB."""
         try:
-            if self._database is not None:
-                # Try to use real CosmosDB
-                self._container = await self._database.create_container_if_not_exists(
-                    id=self._cosmos_container,
-                    partition_key=PartitionKey(path="/session_id"),
-                )
-                logging.info("Successfully connected to CosmosDB")
-            else:
-                # Use in-memory alternative
-                self._in_memory_context = InMemoryContext(
-                    session_id=self.session_id,
-                    user_id=self.user_id,
-                    buffer_size=self._buffer_size,
-                    initial_messages=self._messages
-                )
-                logging.info("Using InMemoryContext as fallback")
-        except Exception as e:
-            logging.warning(f"Failed to initialize CosmosDB container: {e}. Using InMemoryContext as fallback.")
-            self._in_memory_context = InMemoryContext(
-                session_id=self.session_id,
-                user_id=self.user_id,
-                buffer_size=self._buffer_size,
-                initial_messages=self._messages
+            if self._database is None:
+                raise ValueError("CosmosDB client is not available. Please check CosmosDB configuration.")
+            
+            # Set up CosmosDB container
+            self._container = await self._database.create_container_if_not_exists(
+                id=self._cosmos_container,
+                partition_key=PartitionKey(path="/session_id"),
             )
+            logging.info("Successfully connected to CosmosDB")
+        except Exception as e:
+            logging.error(f"Failed to initialize CosmosDB container: {e}. CosmosDB is required for this application.")
+            raise  # Propagate the error upwards instead of falling back to InMemoryContext
         
         self._initialized.set()
 
-    # Helper method to delegate to in-memory context if needed
-    async def _delegate(self, method_name, *args, **kwargs):
-        """Delegate a method call to in-memory context if CosmosDB is not available."""
+    # Helper method for awaiting initialization
+    async def ensure_initialized(self):
+        """Ensure that the container is initialized."""
         await self._initialized.wait()
-        
-        if self._in_memory_context is not None:
-            method = getattr(self._in_memory_context, method_name)
-            return await method(*args, **kwargs)
-        
-        # If we reach here, we're using CosmosDB
-        return None
+        if self._container is None:
+            raise RuntimeError("CosmosDB container is not available. Initialization failed.")
 
     async def add_item(self, item: BaseDataModel) -> None:
         """Add a data model item to Cosmos DB."""
-        await self._initialized.wait()
-        if self._in_memory_context:
-            await self._delegate("add_item", item)
-            return
+        await self.ensure_initialized()
 
         try:
             document = item.model_dump()
@@ -102,27 +80,24 @@ class CosmosMemoryContext(MemoryStoreBase):
             logging.info(f"Item added to Cosmos DB - {document['id']}")
         except Exception as e:
             logging.exception(f"Failed to add item to Cosmos DB: {e}")
+            raise  # Propagate the error instead of silently failing
 
     async def update_item(self, item: BaseDataModel) -> None:
         """Update an existing item in Cosmos DB."""
-        await self._initialized.wait()
-        if self._in_memory_context:
-            await self._delegate("update_item", item)
-            return
+        await self.ensure_initialized()
 
         try:
             document = item.model_dump()
             await self._container.upsert_item(body=document)
         except Exception as e:
             logging.exception(f"Failed to update item in Cosmos DB: {e}")
+            raise  # Propagate the error instead of silently failing
 
     async def get_item_by_id(
         self, item_id: str, partition_key: str, model_class: Type[BaseDataModel]
     ) -> Optional[BaseDataModel]:
         """Retrieve an item by its ID and partition key."""
-        await self._initialized.wait()
-        if self._in_memory_context:
-            return await self._delegate("get_item_by_id", item_id, partition_key, model_class)
+        await self.ensure_initialized()
 
         try:
             item = await self._container.read_item(
@@ -140,9 +115,7 @@ class CosmosMemoryContext(MemoryStoreBase):
         model_class: Type[BaseDataModel],
     ) -> List[BaseDataModel]:
         """Query items from Cosmos DB and return a list of model instances."""
-        await self._initialized.wait()
-        if self._in_memory_context:
-            return await self._delegate("query_items", query, parameters, model_class)
+        await self.ensure_initialized()
 
         try:
             items = self._container.query_items(query=query, parameters=parameters)
@@ -154,8 +127,6 @@ class CosmosMemoryContext(MemoryStoreBase):
         except Exception as e:
             logging.exception(f"Failed to query items from Cosmos DB: {e}")
             return []
-
-    # Methods to add and retrieve Sessions, Plans, and Steps
 
     async def add_session(self, session: Session) -> None:
         """Add a session to Cosmos DB."""
@@ -290,17 +261,9 @@ class CosmosMemoryContext(MemoryStoreBase):
         messages = await self.query_items(query, parameters, AgentMessage)
         return messages
 
-    # Methods for messages - adapted for Semantic Kernel
-
     async def add_message(self, message: ChatMessageContent) -> None:
         """Add a message to the memory and save to Cosmos DB."""
-        await self._initialized.wait()
-        if self._in_memory_context:
-            await self._delegate("add_message", message)
-            return
-
-        if self._container is None:
-            return
+        await self.ensure_initialized()
 
         try:
             self._messages.append(message)
@@ -323,15 +286,11 @@ class CosmosMemoryContext(MemoryStoreBase):
             await self._container.create_item(body=message_dict)
         except Exception as e:
             logging.exception(f"Failed to add message to Cosmos DB: {e}")
+            raise  # Propagate the error instead of silently failing
 
     async def get_messages(self) -> List[ChatMessageContent]:
         """Get recent messages for the session."""
-        await self._initialized.wait()
-        if self._in_memory_context:
-            return await self._delegate("get_messages")
-
-        if self._container is None:
-            return []
+        await self.ensure_initialized()
 
         try:
             query = """
@@ -372,8 +331,6 @@ class CosmosMemoryContext(MemoryStoreBase):
             logging.exception(f"Failed to load messages from Cosmos DB: {e}")
             return []
 
-    # ChatHistory compatibility methods
-    
     def get_chat_history(self) -> ChatHistory:
         """Convert the buffered messages to a ChatHistory object."""
         history = ChatHistory()
@@ -385,8 +342,6 @@ class CosmosMemoryContext(MemoryStoreBase):
         """Save a ChatHistory object to the store."""
         for message in history.messages:
             await self.add_message(message)
-    
-    # MemoryStore interface methods
     
     async def upsert_memory_record(self, collection: str, record: MemoryRecord) -> str:
         """Implement MemoryStore interface - store a memory record."""
@@ -450,11 +405,9 @@ class CosmosMemoryContext(MemoryStoreBase):
         async for item in items:
             await self._container.delete_item(item=item["id"], partition_key=self.session_id)
 
-    # Generic method to get data by type
-
     async def get_data_by_type(self, data_type: str) -> List[BaseDataModel]:
         """Query the Cosmos DB for documents with the matching data_type, session_id and user_id."""
-        await self._initialized.wait()
+        await self.ensure_initialized()
         if self._container is None:
             return []
 
@@ -471,11 +424,9 @@ class CosmosMemoryContext(MemoryStoreBase):
             logging.exception(f"Failed to query data by type from Cosmos DB: {e}")
             return []
 
-    # Additional utility methods
-
     async def delete_item(self, item_id: str, partition_key: str) -> None:
         """Delete an item from Cosmos DB."""
-        await self._initialized.wait()
+        await self.ensure_initialized()
         try:
             await self._container.delete_item(item=item_id, partition_key=partition_key)
         except Exception as e:
@@ -485,7 +436,7 @@ class CosmosMemoryContext(MemoryStoreBase):
         self, query: str, parameters: List[Dict[str, Any]]
     ) -> None:
         """Delete items matching the query."""
-        await self._initialized.wait()
+        await self.ensure_initialized()
         try:
             items = self._container.query_items(query=query, parameters=parameters)
             async for item in items:
@@ -508,7 +459,7 @@ class CosmosMemoryContext(MemoryStoreBase):
 
     async def get_all_items(self) -> List[Dict[str, Any]]:
         """Retrieve all items from Cosmos DB."""
-        await self._initialized.wait()
+        await self.ensure_initialized()
         if self._container is None:
             return []
 
@@ -540,18 +491,15 @@ class CosmosMemoryContext(MemoryStoreBase):
     def __del__(self):
         asyncio.create_task(self.close())
 
-    # Additional required MemoryStoreBase methods
-    
     async def create_collection(self, collection_name: str) -> None:
         """Create a new collection. For CosmosDB, we don't need to create new collections
         as everything is stored in the same container with type identifiers."""
-        await self._initialized.wait()
-        # No-op for CosmosDB implementation - we use the data_type field instead
+        await self.ensure_initialized()
         pass
 
     async def get_collections(self) -> List[str]:
         """Get all collections."""
-        await self._initialized.wait()
+        await self.ensure_initialized()
         
         try:
             query = """
@@ -578,7 +526,7 @@ class CosmosMemoryContext(MemoryStoreBase):
 
     async def delete_collection(self, collection_name: str) -> None:
         """Delete a collection."""
-        await self._initialized.wait()
+        await self.ensure_initialized()
         
         try:
             query = """
@@ -602,14 +550,12 @@ class CosmosMemoryContext(MemoryStoreBase):
 
     async def upsert_async(self, collection_name: str, record: Dict[str, Any]) -> str:
         """Helper method to insert documents directly."""
-        await self._initialized.wait()
+        await self.ensure_initialized()
         
         try:
-            # Make sure record has the session_id for partitioning
             if "session_id" not in record:
                 record["session_id"] = self.session_id
                 
-            # Ensure record has an ID
             if "id" not in record:
                 record["id"] = str(uuid.uuid4())
                 
@@ -623,7 +569,7 @@ class CosmosMemoryContext(MemoryStoreBase):
         self, collection: str, limit: int = 1000, with_embeddings: bool = False
     ) -> List[MemoryRecord]:
         """Get memory records from a collection."""
-        await self._initialized.wait()
+        await self.ensure_initialized()
         
         try:
             query = """
@@ -662,8 +608,6 @@ class CosmosMemoryContext(MemoryStoreBase):
         except Exception as e:
             logging.exception(f"Failed to get memory records from Cosmos DB: {e}")
             return []
-
-    # Required abstract methods from MemoryStoreBase
 
     async def upsert(self, collection_name: str, record: MemoryRecord) -> str:
         """Upsert a memory record into the store."""
@@ -726,28 +670,23 @@ class CosmosMemoryContext(MemoryStoreBase):
         with_embeddings: bool = False
     ) -> List[Tuple[MemoryRecord, float]]:
         """Get the nearest matches to the given embedding."""
-        await self._initialized.wait()
+        await self.ensure_initialized()
         
         try:
-            # Get all memory records from the collection
             records = await self.get_memory_records(collection_name, limit=100, with_embeddings=True)
             
-            # Compute cosine similarity with each record and sort
             results = []
             for record in records:
                 if record.embedding is not None:
-                    # Compute cosine similarity between the query and each record
                     similarity = np.dot(embedding, record.embedding) / (
                         np.linalg.norm(embedding) * np.linalg.norm(record.embedding)
                     )
                     
                     if similarity >= min_relevance_score:
-                        # If we don't need the embeddings in the results, set them to None
                         if not with_embeddings:
                             record.embedding = None
                         results.append((record, float(similarity)))
             
-            # Sort by similarity (descending) and limit the results
             results.sort(key=lambda x: x[1], reverse=True)
             return results[:limit]
         except Exception as e:
