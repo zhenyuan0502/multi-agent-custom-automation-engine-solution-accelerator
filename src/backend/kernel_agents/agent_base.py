@@ -102,11 +102,23 @@ class BaseAgent:
 
     def _register_functions(self):
         """Register this agent's functions with the kernel."""
-        # Register the action handler as a kernel function
+        # Use the kernel function decorator approach instead of from_native_method
+        # which isn't available in SK 1.28.0
+        function_name = "handle_action_request"
+        
+        # Define the function using the kernel function decorator
+        @kernel_function(
+            description="Handle an action request from another agent or the system",
+            name=function_name
+        )
+        async def handle_action_request_wrapper(*args, **kwargs):
+            # Forward to the instance method
+            return await self.handle_action_request(*args, **kwargs)
+            
+        # Add the function to the kernel with the plugin_name parameter
         self._kernel.add_function(
-            self.handle_action_request, 
-            plugin_name=self._agent_name, 
-            function_name="handle_action_request"
+            handle_action_request_wrapper,
+            plugin_name=self._agent_name
         )
 
     @staticmethod
@@ -203,19 +215,13 @@ User input: {{$input}}
 
 Provide a helpful response."""
                 
-                # Create a prompt template config
-                prompt_config = PromptTemplateConfig(
+                # Create a function directly with the kernel's add_function_from_prompt
+                # This avoids issues with PromptTemplateConfig validation
+                function = kernel.add_function_from_prompt(
+                    function_name=function_name,
+                    plugin_name=plugin_name,
                     template=prompt_template,
-                    name=function_name,
                     description=description
-                )
-                
-                # Create the function with the prompt template config
-                # Note: Don't include plugin_name in prompt_config AND as a parameter
-                function = KernelFunction.from_prompt(
-                    prompt=prompt_config,  # Pass as 'prompt' parameter, not positionally
-                    kernel=kernel,
-                    plugin_name=plugin_name  # Provide plugin_name here only
                 )
                 
                 # Add to our list
