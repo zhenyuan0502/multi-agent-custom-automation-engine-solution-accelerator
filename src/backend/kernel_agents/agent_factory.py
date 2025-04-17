@@ -148,6 +148,15 @@ class AgentFactory:
         agent_type_str = cls._agent_type_strings.get(agent_type, agent_type.value.lower())
         tools = await cls._load_tools_for_agent(kernel, agent_type_str)
         
+        # Build the agent definition (functions schema) if tools exist
+        definition = None
+        if tools:
+            definition = {
+                "name": agent_type_str,
+                "description": system_message,
+                "functions": [fn.metadata.to_openai_function() for fn in tools if hasattr(fn, 'metadata') and hasattr(fn.metadata, 'to_openai_function')]
+            }
+        
         # Create the agent instance
         try:
             agent = agent_class(
@@ -158,6 +167,7 @@ class AgentFactory:
                 memory_store=memory_store,
                 tools=tools,
                 system_message=system_message,
+                definition=definition,
                 **kwargs
             )
             

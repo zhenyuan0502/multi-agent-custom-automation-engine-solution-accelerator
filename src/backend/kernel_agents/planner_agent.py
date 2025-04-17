@@ -34,10 +34,12 @@ class PlannerAgent(BaseAgent):
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
-        tools: List[KernelFunction] = None,
+        tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
         agent_name: str = "PlannerAgent",
         config_path: Optional[str] = None,
+        client=None,
+        definition=None,
         available_agents: List[str] = None,
         agent_tools_list: List[str] = None
     ) -> None:
@@ -52,6 +54,8 @@ class PlannerAgent(BaseAgent):
             system_message: Optional system message for the agent
             agent_name: Optional name for the agent (defaults to "PlannerAgent")
             config_path: Optional path to the Planner tools configuration file
+            client: Optional client instance
+            definition: Optional definition instance
             available_agents: List of available agent names for creating steps
             agent_tools_list: List of available tools across all agents
         """
@@ -79,7 +83,9 @@ class PlannerAgent(BaseAgent):
             user_id=user_id,
             memory_store=memory_store,
             tools=tools,
-            system_message=system_message
+            system_message=system_message,
+            client=client,
+            definition=definition
         )
         
     async def handle_input_task(self, kernel_arguments: KernelArguments) -> str:

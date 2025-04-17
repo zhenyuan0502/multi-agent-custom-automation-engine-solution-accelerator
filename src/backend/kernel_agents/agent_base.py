@@ -23,7 +23,7 @@ from event_utils import track_event_if_configured
 # Default formatting instructions used across agents
 DEFAULT_FORMATTING_INSTRUCTIONS = "Instructions: returning the output of this function call verbatim to the user in markdown. Then write AGENT SUMMARY: and then include a summary of what you did."
 
-class BaseAgent:
+class BaseAgent(AzureAIAgent):
     """BaseAgent implemented using Semantic Kernel with Azure AI Agent support."""
 
     def __init__(
@@ -36,6 +36,8 @@ class BaseAgent:
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
         agent_type: Optional[str] = None,
+        client=None,
+        definition=None,
     ):
         """Initialize the base agent.
         
@@ -48,35 +50,47 @@ class BaseAgent:
             tools: Optional list of tools for the agent
             system_message: Optional system message for the agent
             agent_type: Optional agent type string for automatic tool loading
+            client: The client required by AzureAIAgent
+            definition: The definition required by AzureAIAgent
         """
+        # If agent_type is provided, load tools from config automatically
+        if agent_type and not tools:
+            tools = self.get_tools_from_config(kernel, agent_type)
+            # If system_message isn't provided, try to get it from config
+            if not system_message:
+                config = self.load_tools_config(agent_type)
+                system_message = config.get("system_message", self._default_system_message(agent_name))
+        else:
+            tools = tools or []
+        system_message = system_message or self._default_system_message(agent_name)
+        # Call AzureAIAgent constructor with required client and definition
+        super().__init__(
+            kernel=kernel,
+            deployment_name=None,  # Set as needed
+            endpoint=None,        # Set as needed
+            api_version=None,     # Set as needed
+            token=None,           # Set as needed
+            agent_name=agent_name,
+            system_prompt=system_message,
+            client=client,
+            definition=definition
+        )
         self._agent_name = agent_name
         self._kernel = kernel
         self._session_id = session_id
         self._user_id = user_id
         self._memory_store = memory_store
-        
-        # If agent_type is provided, load tools from config automatically
-        if agent_type and not tools:
-            self._tools = self.get_tools_from_config(kernel, agent_type)
-            
-            # If system_message isn't provided, try to get it from config
-            if not system_message:
-                config = self.load_tools_config(agent_type)
-                system_message = config.get("system_message", self._default_system_message())
-        else:
-            self._tools = tools or []
-        
-        self._system_message = system_message or self._default_system_message()
+        self._tools = tools
+        self._system_message = system_message
         self._chat_history = [{"role": "system", "content": self._system_message}]
-        
-        # The agent will be created asynchronously in the async_init method
-        self._agent = None
-        
         # Log initialization
         logging.info(f"Initialized {agent_name} with {len(self._tools)} tools")
-        
         # Register the handler functions
         self._register_functions()
+
+    def _default_system_message(self, agent_name=None) -> str:
+        name = agent_name or getattr(self, '_agent_name', 'Agent')
+        return f"You are an AI assistant named {name}. Help the user by providing accurate and helpful information."
 
     async def async_init(self):
         """Asynchronously initialize the agent after construction.
@@ -91,10 +105,6 @@ class BaseAgent:
         )
         # Tools are registered with the kernel via get_tools_from_config
         return self
-
-    def _default_system_message(self) -> str:
-        """Return a default system message for this agent type."""
-        return f"You are an AI assistant named {self._agent_name}. Help the user by providing accurate and helpful information."
 
     def _register_functions(self):
         """Register this agent's functions with the kernel."""
@@ -128,21 +138,37 @@ class BaseAgent:
         Returns:
             A dynamic async function that can be registered with the semantic kernel
         """
-        # Create a dynamic function decorated with @kernel_function
-        @kernel_function(
-            description=f"Dynamic function: {name}",
-            name=name
-        )
-        async def dynamic_function(*args, **kwargs) -> str:
+        async def dynamic_function(**kwargs) -> str:
             try:
                 # Format the template with the provided kwargs
-                return response_template.format(**kwargs) + f"\n{formatting_instr}"
+                formatted_response = response_template.format(**kwargs)
+                # Append formatting instructions if not already included in the template
+                if formatting_instr and formatting_instr not in formatted_response:
+                    formatted_response = f"{formatted_response}\n{formatting_instr}"
+                return formatted_response
             except KeyError as e:
                 return f"Error: Missing parameter {e} for {name}"
             except Exception as e:
                 return f"Error processing {name}: {str(e)}"
         
-        return dynamic_function
+        # Name the function properly for better debugging
+        dynamic_function.__name__ = name
+        
+        # Create a wrapped kernel function that matches the expected signature
+        @kernel_function(
+            description=f"Dynamic function: {name}",
+            name=name
+        )
+        async def kernel_wrapper(kernel_arguments: KernelArguments = None, **kwargs) -> str:
+            # Combine all arguments into one dictionary
+            all_args = {}
+            if kernel_arguments:
+                for key, value in kernel_arguments.items():
+                    all_args[key] = value
+            all_args.update(kwargs)
+            return await dynamic_function(**all_args)
+        
+        return kernel_wrapper
 
     @staticmethod
     def load_tools_config(agent_type: str, config_path: Optional[str] = None) -> Dict[str, Any]:
@@ -198,18 +224,28 @@ class BaseAgent:
                 description = tool.get("description", "")
                 # Create a dynamic function using the JSON response_template
                 response_template = tool.get("response_template") or tool.get("prompt_template") or ""
-                # Generate a dynamic function matching original agent implementation
+                
+                # Generate a dynamic function using our improved approach
                 dynamic_fn = cls.create_dynamic_function(function_name, response_template)
-                # Attach invocation helpers on the dynamic function so KernelFunction.from_method passes validation
-                setattr(dynamic_fn, 'invoke_async', dynamic_fn)
-                setattr(dynamic_fn, 'invoke', lambda params, fn=dynamic_fn: fn(**params))
-                # Create kernel function from the dynamic function
+                
+                # Create kernel function from the decorated function
                 kernel_func = KernelFunction.from_method(dynamic_fn)
+                
+                # Add parameter metadata from JSON to the kernel function
+                for param in tool.get("parameters", []):
+                    param_name = param.get("name", "")
+                    param_desc = param.get("description", "")
+                    param_type = param.get("type", "string")
+                    
+                    # Set this parameter in the function's metadata
+                    if param_name:
+                        logging.debug(f"Adding parameter '{param_name}' to function '{function_name}'")
+                
                 # Register the function with the kernel
                 kernel.add_function(plugin_name, kernel_func)
                 kernel_functions.append(kernel_func)
                 logging.info(f"Successfully created dynamic tool '{function_name}' for {agent_type}")
             except Exception as e:
-                logging.warning(f"Failed to create tool '{tool.get('name', 'unknown')}': {e}")
+                logging.error(f"Failed to create tool '{tool.get('name', 'unknown')}': {str(e)}")
                 
         return kernel_functions

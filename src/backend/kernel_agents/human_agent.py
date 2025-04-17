@@ -23,10 +23,12 @@ class HumanAgent(BaseAgent):
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
-        tools: List[KernelFunction] = None,
+        tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
         agent_name: str = "HumanAgent",
-        config_path: Optional[str] = None
+        config_path: Optional[str] = None,
+        client=None,
+        definition=None,
     ) -> None:
         """Initialize the Human Agent.
         
@@ -39,6 +41,8 @@ class HumanAgent(BaseAgent):
             system_message: Optional system message for the agent
             agent_name: Optional name for the agent (defaults to "HumanAgent")
             config_path: Optional path to the Human tools configuration file
+            client: Optional client instance
+            definition: Optional definition instance
         """
         # Load configuration if tools not provided
         if tools is None:
@@ -58,7 +62,9 @@ class HumanAgent(BaseAgent):
             user_id=user_id,
             memory_store=memory_store,
             tools=tools,
-            system_message=system_message
+            system_message=system_message,
+            client=client,
+            definition=definition
         )
         
     async def handle_human_feedback(self, kernel_arguments: KernelArguments) -> str:
