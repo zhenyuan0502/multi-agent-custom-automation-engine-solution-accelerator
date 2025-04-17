@@ -200,16 +200,15 @@ class BaseAgent:
                 response_template = tool.get("response_template") or tool.get("prompt_template") or ""
                 # Generate a dynamic function matching original agent implementation
                 dynamic_fn = cls.create_dynamic_function(function_name, response_template)
-                # Wrap and register the dynamic function
+                # Attach invocation helpers on the dynamic function so KernelFunction.from_method passes validation
+                setattr(dynamic_fn, 'invoke_async', dynamic_fn)
+                setattr(dynamic_fn, 'invoke', lambda params, fn=dynamic_fn: fn(**params))
+                # Create kernel function from the dynamic function
                 kernel_func = KernelFunction.from_method(dynamic_fn)
-                # Attach sync/async invocation helpers for tests
-                setattr(kernel_func, 'invoke_async', dynamic_fn)
-                setattr(kernel_func, 'invoke', lambda params, fn=dynamic_fn: fn(**params))
+                # Register the function with the kernel
                 kernel.add_function(plugin_name, kernel_func)
                 kernel_functions.append(kernel_func)
-                
                 logging.info(f"Successfully created dynamic tool '{function_name}' for {agent_type}")
-                
             except Exception as e:
                 logging.warning(f"Failed to create tool '{tool.get('name', 'unknown')}': {e}")
                 
