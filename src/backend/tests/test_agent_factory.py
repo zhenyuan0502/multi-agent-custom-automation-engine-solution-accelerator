@@ -18,7 +18,7 @@ async def test_agent_factory_creates_marketing_agent_and_registers_functions(mon
     tests_dir = os.path.dirname(__file__)
     backend_dir = os.path.dirname(tests_dir)
     json_path = os.path.join(backend_dir, 'tools', 'marketing_tools.json')
-    with open(json_path, 'r') as f:
+    with open(json_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
     expected_names = {tool['name'] for tool in config.get('tools', [])}
 
