@@ -389,6 +389,146 @@
         }
       ],
       "response_template": "##### Health and Wellness Program Organized\n**Program Name:** {program_name}\n**Date:** {date}\n\nThe health and wellness program has been successfully organized for {date}."
+    },
+    {
+      "name": "facilitate_remote_work_setup",
+      "description": "Facilitate the setup for remote work for an employee.",
+      "parameters": [
+        {
+          "name": "employee_name",
+          "description": "The name of the employee",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Remote Work Setup Facilitated\n**Employee Name:** {employee_name}\n\nThe remote work setup has been successfully facilitated for {employee_name}. Please ensure you have all the necessary equipment and access."
+    },
+    {
+      "name": "manage_retirement_plan",
+      "description": "Manage the retirement plan for an employee.",
+      "parameters": [
+        {
+          "name": "employee_name",
+          "description": "The name of the employee",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Retirement Plan Managed\n**Employee Name:** {employee_name}\n\nThe retirement plan for {employee_name} has been successfully managed."
+    },
+    {
+      "name": "handle_overtime_request",
+      "description": "Handle an overtime request for an employee.",
+      "parameters": [
+        {
+          "name": "employee_name",
+          "description": "The name of the employee",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "hours",
+          "description": "The number of overtime hours",
+          "type": "number",
+          "required": true
+        }
+      ],
+      "response_template": "##### Overtime Request Handled\n**Employee Name:** {employee_name}\n**Hours:** {hours}\n\nThe overtime request for {employee_name} has been successfully handled."
+    },
+    {
+      "name": "issue_bonus",
+      "description": "Issue a bonus to an employee.",
+      "parameters": [
+        {
+          "name": "employee_name",
+          "description": "The name of the employee",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "description": "The bonus amount",
+          "type": "number",
+          "required": true
+        }
+      ],
+      "response_template": "##### Bonus Issued\n**Employee Name:** {employee_name}\n**Amount:** ${amount:.2f}\n\nA bonus of ${amount:.2f} has been issued to {employee_name}."
+    },
+    {
+      "name": "schedule_wellness_check",
+      "description": "Schedule a wellness check for an employee.",
+      "parameters": [
+        {
+          "name": "employee_name",
+          "description": "The name of the employee",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "date",
+          "description": "The date for the wellness check",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Wellness Check Scheduled\n**Employee Name:** {employee_name}\n**Date:** {date}\n\nA wellness check has been scheduled for {employee_name} on {date}."
+    },
+    {
+      "name": "handle_employee_suggestion",
+      "description": "Handle a suggestion made by an employee.",
+      "parameters": [
+        {
+          "name": "employee_name",
+          "description": "The name of the employee",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "suggestion",
+          "description": "The suggestion from the employee",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Employee Suggestion Handled\n**Employee Name:** {employee_name}\n**Suggestion:** {suggestion}\n\nThe suggestion from {employee_name} has been successfully handled."
+    },
+    {
+      "name": "update_employee_privileges",
+      "description": "Update privileges for an employee.",
+      "parameters": [
+        {
+          "name": "employee_name",
+          "description": "The name of the employee",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "privilege",
+          "description": "The privilege to update",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "status",
+          "description": "The new status of the privilege",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Employee Privileges Updated\n**Employee Name:** {employee_name}\n**Privilege:** {privilege}\n**Status:** {status}\n\nThe privileges for {employee_name} have been successfully updated."
+    },
+    {
+      "name": "send_email",
+      "description": "Send a welcome email to an address.",
+      "parameters": [
+        {
+          "name": "emailaddress",
+          "description": "The email address to send to",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "response_template": "##### Welcome Email Sent\n**Email Address:** {emailaddress}\n\nA welcome email has been sent to {emailaddress}."
     }
   ]
 }
