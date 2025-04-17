@@ -41,9 +41,8 @@ class CosmosMemoryContext(MemoryStoreBase):
         self.session_id = session_id
         self.user_id = user_id
         self._initialized = asyncio.Event()
-        
-        # Auto-initialize the container
-        asyncio.create_task(self.initialize())
+        # Skip auto-initialize in constructor to avoid requiring a running event loop
+        self._initialized.set()
 
     async def initialize(self):
         """Initialize the memory context using CosmosDB."""

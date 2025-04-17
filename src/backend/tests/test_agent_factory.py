@@ -1,7 +1,10 @@
 import os
+import sys
 import json
 import pytest
 import semantic_kernel as sk
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from kernel_agents.agent_factory import AgentFactory
 from models.agent_types import AgentType

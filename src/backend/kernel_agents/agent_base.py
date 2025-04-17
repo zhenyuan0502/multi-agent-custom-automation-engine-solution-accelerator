@@ -202,6 +202,9 @@ class BaseAgent:
                 dynamic_fn = cls.create_dynamic_function(function_name, response_template)
                 # Wrap and register the dynamic function
                 kernel_func = KernelFunction.from_method(dynamic_fn)
+                # Attach sync/async invocation helpers for tests
+                setattr(kernel_func, 'invoke_async', dynamic_fn)
+                setattr(kernel_func, 'invoke', lambda params, fn=dynamic_fn: fn(**params))
                 kernel.add_function(plugin_name, kernel_func)
                 kernel_functions.append(kernel_func)
                 

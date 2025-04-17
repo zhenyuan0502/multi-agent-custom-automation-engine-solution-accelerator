@@ -30,7 +30,14 @@
     {
       "name": "get_billing_date",
       "description": "Get information about the recurring billing date.",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "start_date",
+          "description": "Billing date in YYYY-MM-DD format",
+          "type": "string",
+          "required": true
+        }
+      ],
       "response_template": "## Billing Date\nYour most recent billing date was **{start_date}**."
     },
     {
@@ -554,6 +561,12 @@
         {
           "name": "selling_price",
           "description": "Selling price",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "margin",
+          "description": "Profit margin percentage",
           "type": "number",
           "required": true
         }
