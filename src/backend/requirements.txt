@@ -18,3 +18,5 @@ openai
 azure-ai-inference 
 azure-search-documents 
 azure-ai-evaluation
+pytest
+pytest-asyncio

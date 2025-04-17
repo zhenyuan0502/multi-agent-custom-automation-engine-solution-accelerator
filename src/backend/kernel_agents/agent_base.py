@@ -196,32 +196,16 @@ class BaseAgent:
             try:
                 function_name = tool["name"]
                 description = tool.get("description", "")
-                
-                # Use the prompt template from the config if available
-                from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
-                
-                # Support either prompt_template or response_template from config
-                prompt_template = tool.get("prompt_template") or tool.get("response_template")
-                if not prompt_template:
-                    # If no prompt_template is provided, create a default one
-                    prompt_template = f"""You are performing the {function_name} function.
-Description: {description}
-
-User input: {{$input}}
-
-Provide a helpful response."""
-                
-                # Create and register a KernelFunction from prompt with the correct plugin name
-                kernel_func = KernelFunction.from_prompt(
-                    function_name=function_name,
-                    plugin_name=plugin_name,
-                    description=description,
-                    prompt=prompt_template
-                )
+                # Create a dynamic function using the JSON response_template
+                response_template = tool.get("response_template") or tool.get("prompt_template") or ""
+                # Generate a dynamic function matching original agent implementation
+                dynamic_fn = cls.create_dynamic_function(function_name, response_template)
+                # Wrap and register the dynamic function
+                kernel_func = KernelFunction.from_method(dynamic_fn)
                 kernel.add_function(plugin_name, kernel_func)
                 kernel_functions.append(kernel_func)
                 
-                logging.info(f"Successfully created tool '{function_name}' for {agent_type}")
+                logging.info(f"Successfully created dynamic tool '{function_name}' for {agent_type}")
                 
             except Exception as e:
                 logging.warning(f"Failed to create tool '{tool.get('name', 'unknown')}': {e}")

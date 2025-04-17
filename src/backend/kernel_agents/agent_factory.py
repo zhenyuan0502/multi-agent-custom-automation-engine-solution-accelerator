@@ -163,7 +163,11 @@ class AgentFactory:
             
             # Initialize the agent asynchronously
             await agent.async_init()
-            
+            # Register tools with Azure AI Agent for LLM function calls
+            if hasattr(agent._agent, 'add_function') and tools:
+                for fn in tools:
+                    agent._agent.add_function(fn)
+        
         except Exception as e:
             logger.error(
                 f"Error creating agent of type {agent_type} with parameters: {e}"

@@ -185,8 +185,15 @@ class Config:
             return agent
         except AttributeError as ae:
             logging.warning(f"AzureAIAgent.create_async not available, using simple fallback agent: {ae}")
-            # Fallback: return a simple agent object with invoke_async
+            # Fallback: return a simple agent object with invoke_async and function registration
             class FallbackAgent:
+                def __init__(self):
+                    # Store registered functions
+                    self.functions = []
+                    self._functions = self.functions
+                def add_function(self, fn):
+                    # Register a tool function for LLM invocation
+                    self.functions.append(fn)
                 async def invoke_async(self, message: str, *args, **kwargs):
                     # Echo back message for testing
                     return message
