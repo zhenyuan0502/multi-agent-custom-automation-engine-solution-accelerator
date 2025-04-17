@@ -60,3 +60,35 @@ async def test_get_hr_information_kernel_function():
     assert 'HR Information' in result
     # No formatting instruction appended to JSON response_template
     assert result.strip().endswith(DEFAULT_FORMATTING_INSTRUCTIONS)
+
+
+@pytest.mark.asyncio
+async def test_all_hr_tools_kernels():
+    # Load HR tools config
+    config_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), '..', 'tools', 'hr_tools.json')
+    )
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    # Create HR agent
+    agent = await AgentFactory.create_agent(AgentType.HR, 'sess_all', 'user_all')
+    # Iterate each tool definition
+    for tool in config['tools']:
+        name = tool['name']
+        fn = next((f for f in agent._tools if f.name == name), None)
+        assert fn, f"Tool {name} not loaded"
+        # Prepare dummy args
+        params = {}
+        for p in tool.get('parameters', []):
+            if p['type'] == 'string':
+                params[p['name']] = 'test'
+            elif p['type'] == 'number':
+                params[p['name']] = 1.23
+        # Invoke kernel function
+        result = await fn.invoke_async(**params)
+        assert isinstance(result, str) and result, f"Empty response for {name}"
+        # Check each param value appears
+        for v in params.values():
+            assert str(v) in result, f"Value {v} missing in {name} response"
+        # Ensure default formatting instructions appended
+        assert result.strip().endswith(DEFAULT_FORMATTING_INSTRUCTIONS), f"Formatting instructions missing in {name}"
