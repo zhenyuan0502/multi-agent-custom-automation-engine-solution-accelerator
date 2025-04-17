@@ -2,6 +2,7 @@
 
 import logging
 from typing import Dict, List, Callable, Any, Optional, Type
+from types import SimpleNamespace
 from semantic_kernel import Kernel
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
@@ -22,6 +23,7 @@ from kernel_agents.product_agent import ProductAgent
 from kernel_agents.group_chat_manager import GroupChatManager
 
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from azure.ai.projects.models import Agent
 
 logger = logging.getLogger(__name__)
 
@@ -150,12 +152,15 @@ class AgentFactory:
         
         # Build the agent definition (functions schema) if tools exist
         definition = None
+        client = Config.GetAIProjectClient()
         if tools:
-            definition = {
-                "name": agent_type_str,
-                "description": system_message,
-                "functions": [fn.metadata.to_openai_function() for fn in tools if hasattr(fn, 'metadata') and hasattr(fn.metadata, 'to_openai_function')]
-            }
+            definition = Agent(
+                id=None,
+                name=agent_type_str,
+                description=system_message,
+                instructions=system_message,
+                functions=[fn.metadata.to_openai_function() for fn in tools if hasattr(fn, 'metadata') and hasattr(fn.metadata, 'to_openai_function')]
+            )
         
         # Create the agent instance
         try:
@@ -167,6 +172,7 @@ class AgentFactory:
                 memory_store=memory_store,
                 tools=tools,
                 system_message=system_message,
+                client=client,
                 definition=definition,
                 **kwargs
             )

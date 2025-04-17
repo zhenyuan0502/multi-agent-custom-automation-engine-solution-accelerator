@@ -11,6 +11,7 @@ from azure.identity.aio import (
     DefaultAzureCredential,
     get_bearer_token_provider,
 )
+from azure.ai.projects.aio import AIProjectClient
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -55,6 +56,12 @@ class Config:
     FRONTEND_SITE_NAME = GetOptionalConfig(
         "FRONTEND_SITE_NAME", "http://127.0.0.1:3000"
     )
+
+    AZURE_AI_PROJECT_ENDPOINT = GetRequiredConfig("AZURE_AI_PROJECT_ENDPOINT")
+    AZURE_AI_SUBSCRIPTION_ID = GetRequiredConfig("AZURE_AI_SUBSCRIPTION_ID")
+    AZURE_AI_RESOURCE_GROUP = GetRequiredConfig("AZURE_AI_RESOURCE_GROUP")
+    AZURE_AI_PROJECT_NAME = GetRequiredConfig("AZURE_AI_PROJECT_NAME")
+    AZURE_AI_CREDENTIAL = DefaultAzureCredential()
 
     # Removed USE_IN_MEMORY_STORAGE flag as we're only using CosmosDB now
 
@@ -183,21 +190,22 @@ class Config:
                     return message
                 setattr(agent, 'invoke_async', invoke_async)
             return agent
-        except AttributeError as ae:
-            logging.warning(f"AzureAIAgent.create_async not available, using simple fallback agent: {ae}")
-            # Fallback: return a simple agent object with invoke_async and function registration
-            class FallbackAgent:
-                def __init__(self):
-                    # Store registered functions
-                    self.functions = []
-                    self._functions = self.functions
-                def add_function(self, fn):
-                    # Register a tool function for LLM invocation
-                    self.functions.append(fn)
-                async def invoke_async(self, message: str, *args, **kwargs):
-                    # Echo back message for testing
-                    return message
-            return FallbackAgent()
         except Exception as e:
             logging.error(f"Failed to create Azure AI Agent: {e}")
             raise
+
+    @staticmethod
+    def GetAIProjectClient():
+        """Create and return an AIProjectClient for Azure AI Foundry."""
+        endpoint = GetRequiredConfig("AZURE_AI_PROJECT_ENDPOINT")
+        subscription_id = GetRequiredConfig("AZURE_AI_SUBSCRIPTION_ID")
+        resource_group_name = GetRequiredConfig("AZURE_AI_RESOURCE_GROUP")
+        project_name = GetRequiredConfig("AZURE_AI_PROJECT_NAME")
+        credential = DefaultAzureCredential()
+        return AIProjectClient(
+            endpoint=endpoint,
+            subscription_id=subscription_id,
+            resource_group_name=resource_group_name,
+            project_name=project_name,
+            credential=credential,
+        )
