@@ -1,7 +1,7 @@
 # config_kernel.py
 import os
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional
 
 # Import Semantic Kernel and Azure AI Agent
 from semantic_kernel import Kernel
@@ -57,14 +57,12 @@ class Config:
     AZURE_AI_SUBSCRIPTION_ID = GetRequiredConfig("AZURE_AI_SUBSCRIPTION_ID")
     AZURE_AI_RESOURCE_GROUP = GetRequiredConfig("AZURE_AI_RESOURCE_GROUP")
     AZURE_AI_PROJECT_NAME = GetRequiredConfig("AZURE_AI_PROJECT_NAME")
-
-    # Removed AZURE_AI_CREDENTIAL = get_bearer_token_provider (obsolete)
-
-    # Removed USE_IN_MEMORY_STORAGE flag as we're only using CosmosDB now
+    AZURE_AI_AGENT_PROJECT_CONNECTION_STRING = GetRequiredConfig("AZURE_AI_AGENT_PROJECT_CONNECTION_STRING")
 
     __azure_credentials = None
     __comos_client = None
     __cosmos_database = None
+    __ai_project_client = None
 
     @staticmethod
     def GetAzureCredentials():
@@ -107,21 +105,6 @@ class Config:
             raise
 
     @staticmethod
-    def GetTokenProvider(scopes):
-        """Get a token provider for the specified scopes.
-        
-        Args:
-            scopes: The authentication scopes
-            
-        Returns:
-            A bearer token provider
-        """
-        credentials = Config.GetAzureCredentials()
-        if credentials is None:
-            return None
-        return get_bearer_token_provider(credentials, scopes)
-
-    @staticmethod
     async def GetAzureOpenAIToken() -> Optional[str]:
         """Get an Azure AD token for Azure OpenAI.
         
@@ -151,60 +134,109 @@ class Config:
         return kernel
     
     @staticmethod
-    async def CreateAzureAIAgent(kernel: Kernel, agent_name: str, instructions: str, agent_type: str = "assistant", definition=None):
+    def GetAIProjectClient():
+        """Create and return an AIProjectClient for Azure AI Foundry using from_connection_string.
+        
+        Returns:
+            An AIProjectClient instance
         """
-        Creates a new Azure AI Agent with the specified name and instructions.
+        if Config.__ai_project_client is not None:
+            return Config.__ai_project_client
+            
+        try:
+            credential = Config.GetAzureCredentials()
+            if credential is None:
+                raise RuntimeError("Unable to acquire Azure credentials; ensure DefaultAzureCredential is configured")
+                
+            connection_string = Config.AZURE_AI_AGENT_PROJECT_CONNECTION_STRING
+            Config.__ai_project_client = AIProjectClient.from_connection_string(
+                credential=credential,
+                conn_str=connection_string
+            )
+            logging.info("Successfully created AIProjectClient using connection string")
+            return Config.__ai_project_client
+        except Exception as exc:
+            logging.error("Failed to create AIProjectClient: %s", exc)
+            raise
+    
+    @staticmethod
+    async def CreateAzureAIAgent(
+        kernel: Kernel, 
+        agent_name: str, 
+        instructions: str, 
+        agent_type: str = "assistant", 
+        tools=None,
+        tool_resources=None,
+        response_format=None,
+        temperature: float = 0.0
+    ):
+        """
+        Creates a new Azure AI Agent with the specified name and instructions using AIProjectClient.
+        
         Args:
             kernel: The Semantic Kernel instance
             agent_name: The name of the agent
             instructions: The system message / instructions for the agent
             agent_type: The type of agent (defaults to "assistant")
-            definition: The Agent model instance (required)
+            tools: Optional tool definitions for the agent
+            tool_resources: Optional tool resources required by the tools
+            response_format: Optional response format to control structured output
+            temperature: The temperature setting for the agent (defaults to 0.0)
+            
         Returns:
             A new AzureAIAgent instance
         """
-        token = await Config.GetAzureOpenAIToken()
-        if not token:
-            raise RuntimeError("Unable to acquire Azure OpenAI token; ensure DefaultAzureCredential is configured")
         try:
-            print("[AzureAIAgent] endpoint:", Config.AZURE_OPENAI_ENDPOINT)
-            print("[AzureAIAgent] deployment_name:", Config.AZURE_OPENAI_DEPLOYMENT_NAME)
-            async with (
-                DefaultAzureCredential() as creds,
-                AzureAIAgent.create_client(
-                    credential=creds,
-                    model_deployment_name=Config.AZURE_OPENAI_DEPLOYMENT_NAME
-                ) as client,
-            ):
-                agent = AzureAIAgent(
-                    kernel=kernel,
-                    deployment_name=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
-                    endpoint=Config.AZURE_OPENAI_ENDPOINT,
-                    api_version=Config.AZURE_OPENAI_API_VERSION,
-                    token=token,
-                    agent_type=agent_type,
-                    agent_name=agent_name,
-                    system_prompt=instructions,
-                    client=client,
-                    definition=definition,
-                )
-                # Ensure agent has invoke_async for tool invocation
-                if not hasattr(agent, 'invoke_async'):
-                    async def invoke_async(message: str):
-                        return message
-                    setattr(agent, 'invoke_async', invoke_async)
-                return agent
+            # Get the AIProjectClient
+            project_client = Config.GetAIProjectClient()
+            
+            # Tool handling: We need to distinguish between our SK functions and
+            # the tool definitions needed by project_client.agents.create_agent
+            tool_definitions = None
+            kernel_functions = []
+            
+            # If tools are provided and they are SK KernelFunctions, we need to handle them differently
+            # than if they are already tool definitions expected by AIProjectClient
+            if tools:
+                # Check if tools are SK KernelFunctions
+                if all(hasattr(tool, 'name') and hasattr(tool, 'invoke') for tool in tools):
+                    # Store the kernel functions to register with the agent later
+                    kernel_functions = tools
+                    # For now, we don't extract tool definitions from kernel functions
+                    # This would require additional code to convert SK functions to AI Project tool definitions
+                    logging.warning("Kernel functions provided as tools will be registered with the agent after creation")
+                else:
+                    # Assume these are already proper tool definitions for create_agent
+                    tool_definitions = tools
+            
+            # Create the agent using the project client
+            logging.info("Creating agent '%s' with model '%s'", agent_name, Config.AZURE_OPENAI_DEPLOYMENT_NAME)
+            agent_definition = await project_client.agents.create_agent(
+                model=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                name=agent_name,
+                instructions=instructions,
+                tools=tool_definitions,  # Only pass tool_definitions, not kernel functions
+                tool_resources=tool_resources,
+                temperature=temperature,
+                response_format=response_format
+            )
+            
+            # Create the agent instance directly with project_client and definition
+            agent_kwargs = {
+                "client": project_client,
+                "definition": agent_definition,
+                "kernel": kernel
+            }
+            
+            agent = AzureAIAgent(**agent_kwargs)
+            
+            # Register the kernel functions with the agent if any were provided
+            if kernel_functions:
+                for function in kernel_functions:
+                    if hasattr(agent, 'add_function'):
+                        agent.add_function(function)
+                    
+            return agent
         except Exception as exc:
             logging.error("Failed to create Azure AI Agent: %s", exc)
             raise
-
-    @staticmethod
-    def GetAIProjectClient():
-        """Create and return an AIProjectClient for Azure AI Foundry using from_connection_string."""
-        connection_string = GetRequiredConfig("AZURE_AI_AGENT_PROJECT_CONNECTION_STRING")
-        credential = DefaultAzureCredential()
-        print("[AIProjectClient] Using connection string")
-        return AIProjectClient.from_connection_string(
-            credential=credential,
-            conn_str=connection_string
-        )

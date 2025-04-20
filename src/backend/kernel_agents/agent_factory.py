@@ -188,9 +188,10 @@ class AgentFactory:
                 definition=definition,
                 **kwargs
             )
-            
+            logger.debug(f"[DEBUG] Agent object after instantiation: {agent}")
             # Initialize the agent asynchronously
-            await agent.async_init()
+            init_result = await agent.async_init()
+            logger.debug(f"[DEBUG] Result of agent.async_init(): {init_result}")
             # Register tools with Azure AI Agent for LLM function calls
             if hasattr(agent._agent, 'add_function') and tools:
                 for fn in tools:

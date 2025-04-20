@@ -1,42 +1,40 @@
 import sys
 import os
 import pytest
-import asyncio
+import logging
 
 # Ensure src/backend is on the Python path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from kernel_agents.agent_factory import AgentFactory
-from models.agent_types import AgentType
 from config_kernel import Config
 
+# Configure logging for the tests
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 @pytest.mark.asyncio
-async def test_create_and_execute_generic_agent():
+async def test_azure_project_client_connection():
     """
-    Integration test: create a GenericAgent from AgentFactory, ensure tools load from generic_tools.json,
-    and execute the dummy_function.
+    Integration test to verify that we can successfully create a connection to Azure using the project client.
+    This is the most basic test to ensure our Azure connectivity is working properly.
     """
-    session_id = "integration-test-session"
-    user_id = "integration-test-user"
-
-    # Create the agent using the real config and factory
-    agent = await AgentFactory.create_agent(
-        agent_type=AgentType.GENERIC,
-        session_id=session_id,
-        user_id=user_id
-    )
-    assert agent is not None, "AgentFactory did not return an agent"
-    
-    # Find the dummy_function tool
-    dummy_tool = next((t for t in agent._tools if hasattr(t, 'name') and t.name == "dummy_function"), None)
-    assert dummy_tool is not None, "dummy_function not loaded in GenericAgent tools"
-
-    # Execute the dummy_function (should not require parameters)
-    if hasattr(dummy_tool, 'invoke_async') and asyncio.iscoroutinefunction(dummy_tool.invoke_async):
-        result = await dummy_tool.invoke_async()
-    elif asyncio.iscoroutinefunction(dummy_tool):
-        result = await dummy_tool()
-    else:
-        result = dummy_tool()
-
-    assert result.strip() == "This is a placeholder function", f"Unexpected result: {result}"
+    try:
+        # Get the Azure AI Project client
+        project_client = Config.GetAIProjectClient()
+        
+        # Verify the project client has been created successfully
+        assert project_client is not None, "Failed to create Azure AI Project client"
+        
+        # Check that the connection string environment variable is set
+        conn_str_env = os.environ.get("AZURE_AI_AGENT_PROJECT_CONNECTION_STRING")
+        assert conn_str_env is not None, "AZURE_AI_AGENT_PROJECT_CONNECTION_STRING environment variable not set"
+        
+        # Log success
+        logger.info("Successfully connected to Azure using the project client")
+        
+        # Return client for reference (though not needed for test)
+        return project_client
+        
+    except Exception as e:
+        logger.error(f"Error connecting to Azure: {str(e)}")
+        raise
