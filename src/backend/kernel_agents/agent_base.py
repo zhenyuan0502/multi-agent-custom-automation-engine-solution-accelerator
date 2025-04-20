@@ -161,7 +161,13 @@ class BaseAgent(AzureAIAgent):
                 
             # Invoke the tool
             logging.info(f"Invoking tool '{tool_name}' with arguments: {arguments}")
-            result = await tool.invoke(kernel_args)
+            
+            # Use invoke_with_args_dict directly instead of relying on KernelArguments
+            if hasattr(tool, 'invoke_with_args_dict') and callable(tool.invoke_with_args_dict):
+                result = await tool.invoke_with_args_dict(arguments)
+            else:
+                # Fall back to standard invoke method
+                result = await tool.invoke(kernel_args)
             
             # Log telemetry if configured
             track_event_if_configured("AgentToolInvocation", {
