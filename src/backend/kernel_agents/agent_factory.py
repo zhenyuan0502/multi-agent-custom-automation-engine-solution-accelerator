@@ -152,16 +152,27 @@ class AgentFactory:
         
         # Build the agent definition (functions schema) if tools exist
         definition = None
-        client = Config.GetAIProjectClient()
-        if tools:
-            # Create the agent definition using the AIProjectClient (project-based pattern)
-            definition = await client.agents.create_agent(
-                model=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
-                name=agent_type_str,
-                instructions=system_message,
-                temperature=temperature,
-                response_format=None  # Add response_format if required
-            )
+        client = None
+        try:
+            client = Config.GetAIProjectClient()
+        except Exception as client_exc:
+            logger.error(f"Error creating AIProjectClient: {client_exc}")
+            raise
+        try:
+            if tools:
+                # Create the agent definition using the AIProjectClient (project-based pattern)
+                definition = await client.agents.create_agent(
+                    model=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                    name=agent_type_str,
+                    instructions=system_message,
+                    temperature=temperature,
+                    response_format=None  # Add response_format if required
+                )
+        except Exception as agent_exc:
+            logger.error(f"Error creating agent definition with AIProjectClient: {agent_exc}")
+            raise
+        if definition is None:
+            raise RuntimeError("Failed to create agent definition from Azure AI Project. Check your Azure configuration, permissions, and network connectivity.")
         
         # Create the agent instance using the project-based pattern
         try:
