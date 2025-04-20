@@ -126,6 +126,56 @@ class BaseAgent(AzureAIAgent):
         # Use agent name as plugin for handler
         self._kernel.add_function(self._agent_name, kernel_func)
 
+    async def invoke_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
+        """Invoke a specific tool by name with the provided arguments.
+        
+        Args:
+            tool_name: The name of the tool to invoke
+            arguments: A dictionary of arguments to pass to the tool
+            
+        Returns:
+            The result of the tool invocation as a string
+            
+        Raises:
+            ValueError: If the tool is not found
+        """
+        # Find the tool by name in the agent's tools list
+        tool = next((t for t in self._tools if t.name == tool_name), None)
+        
+        if not tool:
+            # Try looking up the tool in the kernel's plugins
+            plugin_name = f"{self._agent_name.lower().replace('agent', '')}_plugin"
+            try:
+                tool = self._kernel.get_function(plugin_name, tool_name)
+            except Exception:
+                raise ValueError(f"Tool '{tool_name}' not found in agent tools or kernel plugins")
+        
+        if not tool:
+            raise ValueError(f"Tool '{tool_name}' not found")
+            
+        try:
+            # Create kernel arguments from the dictionary
+            kernel_args = KernelArguments()
+            for key, value in arguments.items():
+                kernel_args[key] = value
+                
+            # Invoke the tool
+            logging.info(f"Invoking tool '{tool_name}' with arguments: {arguments}")
+            result = await tool.invoke(kernel_args)
+            
+            # Log telemetry if configured
+            track_event_if_configured("AgentToolInvocation", {
+                "agent_name": self._agent_name,
+                "tool_name": tool_name,
+                "session_id": self._session_id,
+                "user_id": self._user_id
+            })
+            
+            return str(result)
+        except Exception as e:
+            logging.error(f"Error invoking tool '{tool_name}': {str(e)}")
+            raise
+
     @staticmethod
     def create_dynamic_function(name: str, response_template: str, formatting_instr: str = DEFAULT_FORMATTING_INSTRUCTIONS) -> Callable[..., Awaitable[str]]:
         """Create a dynamic function for agent tools based on the name and template.

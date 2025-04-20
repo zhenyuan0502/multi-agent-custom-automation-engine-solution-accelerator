@@ -283,7 +283,7 @@ async def test_hr_agent_tools_existence():
 @skip_if_no_azure
 @pytest.mark.asyncio
 async def test_hr_agent_direct_tool_execution():
-    """Test that we can directly execute HR agent tools."""
+    """Test that we can directly execute HR agent tools using the agent instance."""
     # Reset cached clients
     Config._Config__ai_project_client = None
     
@@ -295,88 +295,57 @@ async def test_hr_agent_direct_tool_execution():
     )
     
     try:
-        # Find specific tools we want to test
-        orientation_tool = None
-        register_benefits_tool = None
+        # Get available tool names for logging
+        available_tools = [t.name for t in agent._tools if hasattr(t, 'name')]
+        logger.info(f"Available tool names: {available_tools}")
         
-        for tool in agent._tools:
-            tool_name = ""
-            if hasattr(tool, 'name'):
-                tool_name = tool.name
-            elif hasattr(tool, 'metadata') and hasattr(tool.metadata, 'name'):
-                tool_name = tool.metadata.name
-            
-            if "schedule_orientation" in tool_name.lower():
-                orientation_tool = tool
-            elif "register_for_benefits" in tool_name.lower():
-                register_benefits_tool = tool
+        # First test: Schedule orientation using invoke_tool
+        logger.info("Testing orientation tool invocation through agent")
+        orientation_tool_name = "schedule_orientation_session"
+        orientation_result = await agent.invoke_tool(
+            orientation_tool_name, 
+            {"employee_name": "Jane Doe", "date": "April 25, 2025"}
+        )
         
-        # Verify we found the tools
-        assert orientation_tool is not None, "Could not find schedule_orientation_session tool"
-        assert register_benefits_tool is not None, "Could not find register_for_benefits tool"
+        # Log the result
+        logger.info(f"Orientation tool result via agent: {orientation_result}")
         
-        # Get the kernel from the agent
-        kernel = agent._agent._kernel if hasattr(agent._agent, '_kernel') else None
+        # Verify the result
+        assert orientation_result is not None, "No result returned from orientation tool"
+        assert "Jane Doe" in str(orientation_result), "Employee name not found in orientation tool result"
+        assert "April 25, 2025" in str(orientation_result), "Date not found in orientation tool result"
         
-        if kernel is None:
-            logger.warning("Could not get kernel from agent, trying to create one")
-            from semantic_kernel import Kernel
-            kernel = Kernel()
+        # Second test: Register for benefits
+        logger.info("Testing benefits registration tool invocation through agent")
+        benefits_tool_name = "register_for_benefits"
+        benefits_result = await agent.invoke_tool(
+            benefits_tool_name,
+            {"employee_name": "John Smith"}
+        )
         
-        # Check how the tool function is defined to understand what arguments it expects
-        if hasattr(orientation_tool, 'parameters'):
-            logger.info(f"Examining tool parameters for {orientation_tool.name if hasattr(orientation_tool, 'name') else 'orientation tool'}")
-            for param in orientation_tool.parameters:
-                logger.info(f"Parameter: {param.name}, Required: {param.required if hasattr(param, 'required') else False}")
+        # Log the result
+        logger.info(f"Benefits tool result via agent: {benefits_result}")
         
-        # Try to execute the orientation tool
-        if orientation_tool:
-            logger.info(f"Testing direct execution of tool: {orientation_tool.name if hasattr(orientation_tool, 'name') else 'orientation tool'}")
-            
-            # Create arguments for the tool
-            arguments = KernelArguments()
-            arguments["employee_name"] = "Jane Doe"
-            arguments["date"] = "April 25, 2025"
-            arguments["kernel_arguments"] = arguments  # Passing arguments as kernel_arguments too
-            arguments["kwargs"] = {  # Add the kwargs parameter
-                "employee_name": "Jane Doe",
-                "date": "April 25, 2025"
-            }
-            
-            # Execute the tool with the kernel
-            result = await orientation_tool.invoke(kernel, arguments)
-            
-            # Log the result
-            logger.info(f"Orientation tool result: {result}")
-            
-            # Verify the result
-            assert result is not None, "No result returned from orientation tool"
-            assert "Jane Doe" in str(result.value), "Employee name not found in orientation tool result"
-            assert "April 25, 2025" in str(result.value), "Date not found in orientation tool result"
+        # Verify the result
+        assert benefits_result is not None, "No result returned from benefits tool"
+        assert "John Smith" in str(benefits_result), "Employee name not found in benefits tool result"
         
-        # Try to execute the benefits tool
-        if register_benefits_tool:
-            logger.info(f"Testing direct execution of tool: {register_benefits_tool.name if hasattr(register_benefits_tool, 'name') else 'benefits tool'}")
-            
-            # Create arguments for the tool
-            arguments = KernelArguments()
-            arguments["employee_name"] = "John Smith"
-            arguments["kernel_arguments"] = arguments  # Passing arguments as kernel_arguments too
-            arguments["kwargs"] = {  # Add the kwargs parameter
-                "employee_name": "John Smith"
-            }
-            
-            # Execute the tool with the kernel
-            result = await register_benefits_tool.invoke(kernel, arguments)
-            
-            # Log the result
-            logger.info(f"Benefits tool result: {result}")
-            
-            # Verify the result
-            assert result is not None, "No result returned from benefits tool"
-            assert "John Smith" in str(result.value), "Employee name not found in benefits tool result"
+        # Third test: Process leave request
+        logger.info("Testing leave request processing tool invocation through agent")
+        leave_tool_name = "process_leave_request"
+        leave_result = await agent.invoke_tool(
+            leave_tool_name,
+            {"employee_name": "Alice Brown", "start_date": "May 1, 2025", "end_date": "May 5, 2025", "reason": "Vacation"}
+        )
         
-        logger.info("Successfully executed HR agent tools directly")
+        # Log the result
+        logger.info(f"Leave request tool result via agent: {leave_result}")
+        
+        # Verify the result
+        assert leave_result is not None, "No result returned from leave request tool"
+        assert "Alice Brown" in str(leave_result), "Employee name not found in leave request tool result"
+        
+        logger.info("Successfully executed HR agent tools directly through the agent instance")
     except Exception as e:
         logger.error(f"Error executing HR agent tools: {str(e)}")
         raise
