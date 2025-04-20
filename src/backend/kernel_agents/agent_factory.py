@@ -154,18 +154,19 @@ class AgentFactory:
         definition = None
         client = Config.GetAIProjectClient()
         if tools:
-            definition = Agent(
-                id=None,
+            # Create the agent definition using the AIProjectClient (project-based pattern)
+            definition = await client.agents.create_agent(
+                model=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
                 name=agent_type_str,
-                description=system_message,
                 instructions=system_message,
-                functions=[fn.metadata.to_openai_function() for fn in tools if hasattr(fn, 'metadata') and hasattr(fn.metadata, 'to_openai_function')]
+                temperature=temperature,
+                response_format=None  # Add response_format if required
             )
         
-        # Create the agent instance
+        # Create the agent instance using the project-based pattern
         try:
             agent = agent_class(
-                agent_name=cls._agent_type_strings.get(agent_type, agent_type.value.lower()),
+                agent_name=agent_type_str,
                 kernel=kernel,
                 session_id=session_id,
                 user_id=user_id,

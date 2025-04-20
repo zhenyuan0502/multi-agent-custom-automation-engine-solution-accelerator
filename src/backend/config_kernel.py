@@ -7,10 +7,7 @@ from typing import Optional, Dict, Any
 from semantic_kernel import Kernel
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 from azure.cosmos.aio import CosmosClient
-from azure.identity.aio import (
-    DefaultAzureCredential,
-    get_bearer_token_provider,
-)
+from azure.identity.aio import DefaultAzureCredential
 from azure.ai.projects.aio import AIProjectClient
 from dotenv import load_dotenv
 
@@ -21,7 +18,7 @@ def GetRequiredConfig(name, default=None):
     if name in os.environ:
         return os.environ[name]
     if default is not None:
-        logging.warning(f"Environment variable {name} not found, using default value")
+        logging.warning("Environment variable %s not found, using default value", name)
         return default
     raise ValueError(f"Environment variable {name} not found and no default provided")
 
@@ -57,11 +54,11 @@ class Config:
         "FRONTEND_SITE_NAME", "http://127.0.0.1:3000"
     )
 
-    AZURE_AI_PROJECT_ENDPOINT = GetRequiredConfig("AZURE_AI_PROJECT_ENDPOINT")
     AZURE_AI_SUBSCRIPTION_ID = GetRequiredConfig("AZURE_AI_SUBSCRIPTION_ID")
     AZURE_AI_RESOURCE_GROUP = GetRequiredConfig("AZURE_AI_RESOURCE_GROUP")
     AZURE_AI_PROJECT_NAME = GetRequiredConfig("AZURE_AI_PROJECT_NAME")
-    AZURE_AI_CREDENTIAL = DefaultAzureCredential()
+
+    # Removed AZURE_AI_CREDENTIAL = get_bearer_token_provider (obsolete)
 
     # Removed USE_IN_MEMORY_STORAGE flag as we're only using CosmosDB now
 
@@ -79,13 +76,11 @@ class Config:
         # Cache the credentials object
         if Config.__azure_credentials is not None:
             return Config.__azure_credentials
-
-        # Always use DefaultAzureCredential
         try:
             Config.__azure_credentials = DefaultAzureCredential()
             return Config.__azure_credentials
-        except Exception as e:
-            logging.warning(f"Failed to create DefaultAzureCredential: {e}")
+        except Exception as exc:
+            logging.warning("Failed to create DefaultAzureCredential: %s", exc)
             return None
 
     @staticmethod
@@ -107,8 +102,8 @@ class Config:
                 )
 
             return Config.__cosmos_database
-        except Exception as e:
-            logging.error(f"Failed to create CosmosDB client: {e}. CosmosDB is required for this application.")
+        except Exception as exc:
+            logging.error("Failed to create CosmosDB client: %s. CosmosDB is required for this application.", exc)
             raise
 
     @staticmethod
@@ -140,8 +135,8 @@ class Config:
                 return None
             token = await credential.get_token(*Config.AZURE_OPENAI_SCOPES)
             return token.token
-        except Exception as e:
-            logging.error(f"Failed to get Azure OpenAI token: {e}")
+        except Exception as exc:
+            logging.error("Failed to get Azure OpenAI token: %s", exc)
             return None
     
     @staticmethod
@@ -156,56 +151,60 @@ class Config:
         return kernel
     
     @staticmethod
-    async def CreateAzureAIAgent(kernel: Kernel, agent_name: str, instructions: str, agent_type: str = "assistant"):
+    async def CreateAzureAIAgent(kernel: Kernel, agent_name: str, instructions: str, agent_type: str = "assistant", definition=None):
         """
         Creates a new Azure AI Agent with the specified name and instructions.
-        
         Args:
             kernel: The Semantic Kernel instance
             agent_name: The name of the agent
             instructions: The system message / instructions for the agent
             agent_type: The type of agent (defaults to "assistant")
-            
+            definition: The Agent model instance (required)
         Returns:
             A new AzureAIAgent instance
         """
-        # Obtain an Azure AD token via DefaultAzureCredential; API key fallback removed.
         token = await Config.GetAzureOpenAIToken()
         if not token:
             raise RuntimeError("Unable to acquire Azure OpenAI token; ensure DefaultAzureCredential is configured")
         try:
-            agent = await AzureAIAgent.create_async(
-                kernel=kernel,
-                deployment_name=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
-                endpoint=Config.AZURE_OPENAI_ENDPOINT,
-                api_version=Config.AZURE_OPENAI_API_VERSION,
-                token=token,
-                agent_type=agent_type,
-                agent_name=agent_name,
-                system_prompt=instructions,
-            )
-            # Ensure agent has invoke_async for tool invocation
-            if not hasattr(agent, 'invoke_async'):
-                async def invoke_async(message: str, *args, **kwargs):  # fallback echo
-                    return message
-                setattr(agent, 'invoke_async', invoke_async)
-            return agent
-        except Exception as e:
-            logging.error(f"Failed to create Azure AI Agent: {e}")
+            print("[AzureAIAgent] endpoint:", Config.AZURE_OPENAI_ENDPOINT)
+            print("[AzureAIAgent] deployment_name:", Config.AZURE_OPENAI_DEPLOYMENT_NAME)
+            async with (
+                DefaultAzureCredential() as creds,
+                AzureAIAgent.create_client(
+                    credential=creds,
+                    model_deployment_name=Config.AZURE_OPENAI_DEPLOYMENT_NAME
+                ) as client,
+            ):
+                agent = AzureAIAgent(
+                    kernel=kernel,
+                    deployment_name=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                    endpoint=Config.AZURE_OPENAI_ENDPOINT,
+                    api_version=Config.AZURE_OPENAI_API_VERSION,
+                    token=token,
+                    agent_type=agent_type,
+                    agent_name=agent_name,
+                    system_prompt=instructions,
+                    client=client,
+                    definition=definition,
+                )
+                # Ensure agent has invoke_async for tool invocation
+                if not hasattr(agent, 'invoke_async'):
+                    async def invoke_async(message: str):
+                        return message
+                    setattr(agent, 'invoke_async', invoke_async)
+                return agent
+        except Exception as exc:
+            logging.error("Failed to create Azure AI Agent: %s", exc)
             raise
 
     @staticmethod
     def GetAIProjectClient():
-        """Create and return an AIProjectClient for Azure AI Foundry."""
-        endpoint = GetRequiredConfig("AZURE_AI_PROJECT_ENDPOINT")
-        subscription_id = GetRequiredConfig("AZURE_AI_SUBSCRIPTION_ID")
-        resource_group_name = GetRequiredConfig("AZURE_AI_RESOURCE_GROUP")
-        project_name = GetRequiredConfig("AZURE_AI_PROJECT_NAME")
+        """Create and return an AIProjectClient for Azure AI Foundry using from_connection_string."""
+        connection_string = GetRequiredConfig("AZURE_AI_AGENT_PROJECT_CONNECTION_STRING")
         credential = DefaultAzureCredential()
-        return AIProjectClient(
-            endpoint=endpoint,
-            subscription_id=subscription_id,
-            resource_group_name=resource_group_name,
-            project_name=project_name,
+        print("[AIProjectClient] Using connection string")
+        return AIProjectClient.from_connection_string(
             credential=credential,
+            conn_str=connection_string
         )
