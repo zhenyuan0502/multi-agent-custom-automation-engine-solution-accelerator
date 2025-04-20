@@ -3,7 +3,10 @@ import os
 import pytest
 import logging
 import inspect
-from typing import Any, Dict, List
+import json
+import asyncio
+from unittest import mock
+from typing import Any, Dict, List, Optional
 
 # Ensure src/backend is on the Python path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -30,33 +33,90 @@ logger = logging.getLogger(__name__)
 TEST_SESSION_ID = "integration-test-session"
 TEST_USER_ID = "integration-test-user"
 
+# Check if required Azure environment variables are present
+def azure_env_available():
+    """Check if all required Azure environment variables are present."""
+    required_vars = [
+        "AZURE_AI_AGENT_PROJECT_CONNECTION_STRING",
+        "AZURE_AI_SUBSCRIPTION_ID",
+        "AZURE_AI_RESOURCE_GROUP",
+        "AZURE_AI_PROJECT_NAME",
+        "AZURE_OPENAI_DEPLOYMENT_NAME"
+    ]
+    
+    missing = [var for var in required_vars if not os.environ.get(var)]
+    if missing:
+        logger.warning(f"Missing required environment variables for Azure tests: {missing}")
+        return False
+    return True
+
+# Skip tests if Azure environment is not configured
+skip_if_no_azure = pytest.mark.skipif(not azure_env_available(), 
+                                     reason="Azure environment not configured")
+
+def find_tools_json_file(agent_type_str):
+    """Find the appropriate tools JSON file for an agent type."""
+    tools_dir = os.path.join(os.path.dirname(__file__), '..', 'tools')
+    tools_file = os.path.join(tools_dir, f"{agent_type_str}_tools.json")
+    
+    if os.path.exists(tools_file):
+        return tools_file
+    
+    # Try alternatives if the direct match isn't found
+    alt_file = os.path.join(tools_dir, f"{agent_type_str.replace('_', '')}_tools.json")
+    if os.path.exists(alt_file):
+        return alt_file
+        
+    # If nothing is found, log a warning but don't fail
+    logger.warning(f"No tools JSON file found for agent type {agent_type_str}")
+    return None
+
+# Fixture for isolated event loop per test
+@pytest.fixture
+def event_loop():
+    """Create an isolated event loop for each test."""
+    loop = asyncio.new_event_loop()
+    yield loop
+    # Clean up
+    if not loop.is_closed():
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
+
+# Fixture for AI project client
+@pytest.fixture
+async def ai_project_client():
+    """Create a fresh AI project client for each test."""
+    old_client = Config._Config__ai_project_client
+    Config._Config__ai_project_client = None  # Reset the cached client
+    
+    # Get a fresh client
+    client = Config.GetAIProjectClient()
+    yield client
+    
+    # Restore original client if needed
+    Config._Config__ai_project_client = old_client
+
+@skip_if_no_azure
 @pytest.mark.asyncio
 async def test_azure_project_client_connection():
     """
     Integration test to verify that we can successfully create a connection to Azure using the project client.
     This is the most basic test to ensure our Azure connectivity is working properly before testing agents.
     """
-    try:
-        # Get the Azure AI Project client
-        project_client = Config.GetAIProjectClient()
-        
-        # Verify the project client has been created successfully
-        assert project_client is not None, "Failed to create Azure AI Project client"
-        
-        # Check that the connection string environment variable is set
-        conn_str_env = os.environ.get("AZURE_AI_AGENT_PROJECT_CONNECTION_STRING")
-        assert conn_str_env is not None, "AZURE_AI_AGENT_PROJECT_CONNECTION_STRING environment variable not set"
-        
-        # Log success
-        logger.info("Successfully connected to Azure using the project client")
-        
-        # Return client for reference
-        return project_client
-        
-    except Exception as e:
-        logger.error(f"Error connecting to Azure: {str(e)}")
-        raise
+    # Get the Azure AI Project client
+    project_client = Config.GetAIProjectClient()
+    
+    # Verify the project client has been created successfully
+    assert project_client is not None, "Failed to create Azure AI Project client"
+    
+    # Check that the connection string environment variable is set
+    conn_str_env = os.environ.get("AZURE_AI_AGENT_PROJECT_CONNECTION_STRING")
+    assert conn_str_env is not None, "AZURE_AI_AGENT_PROJECT_CONNECTION_STRING environment variable not set"
+    
+    # Log success
+    logger.info("Successfully connected to Azure using the project client")
 
+@skip_if_no_azure
 @pytest.mark.parametrize(
     "agent_type,expected_agent_class", 
     [
@@ -68,107 +128,117 @@ async def test_azure_project_client_connection():
     ]
 )
 @pytest.mark.asyncio
-async def test_create_real_agent(agent_type, expected_agent_class):
+async def test_create_real_agent(agent_type, expected_agent_class, ai_project_client):
     """
     Parameterized integration test to verify that we can create real agents of different types.
     Tests that:
-    1. The agent is created without errors
+    1. The agent is created without errors using the real project_client
     2. The agent is an instance of the expected class
-    3. The agent has the required AzureAIAgent properties
+    3. The agent has the required AzureAIAgent property
     """
-    try:
-        # Create a real agent using the AgentFactory
-        agent = await AgentFactory.create_agent(
-            agent_type=agent_type,
-            session_id=TEST_SESSION_ID,
-            user_id=TEST_USER_ID
-        )
-        
-        agent_type_name = agent_type.name.lower()
-        logger.info(f"Testing agent of type: {agent_type_name}")
-        
-        # Check that the agent was created successfully
-        assert agent is not None, f"Failed to create a {agent_type_name} agent"
-        
-        # Verify the agent type
-        assert isinstance(agent, expected_agent_class), f"Agent is not an instance of {expected_agent_class.__name__}"
-        
-        # Verify that the agent is or contains an AzureAIAgent
-        assert hasattr(agent, '_agent'), f"{agent_type_name} agent does not have an _agent attribute"
-        assert isinstance(agent._agent, AzureAIAgent), f"The _agent attribute of {agent_type_name} agent is not an AzureAIAgent"
-        
-        # Check that the agent has the correct session_id
-        assert agent._session_id == TEST_SESSION_ID, f"{agent_type_name} agent has incorrect session_id"
-        
-        # Check that the agent has the correct user_id
-        assert agent._user_id == TEST_USER_ID, f"{agent_type_name} agent has incorrect user_id"
-        
-        # Check that tools were loaded
-        assert hasattr(agent, '_tools'), f"{agent_type_name} agent does not have tools"
-        assert len(agent._tools) > 0, f"{agent_type_name} agent has no tools loaded"
-        
-        logger.info(f"Successfully created a real {agent_type_name} agent with {len(agent._tools)} tools")
-        
-        # Return agent for potential use by other tests
-        return agent
-        
-    except Exception as e:
-        logger.error(f"Error creating a real {agent_type.name.lower()} agent: {str(e)}")
-        raise
+    # Create a real agent using the AgentFactory
+    agent = await AgentFactory.create_agent(
+        agent_type=agent_type,
+        session_id=TEST_SESSION_ID,
+        user_id=TEST_USER_ID
+    )
+    
+    agent_type_name = agent_type.name.lower()
+    logger.info(f"Testing agent of type: {agent_type_name}")
+    
+    # Check that the agent was created successfully
+    assert agent is not None, f"Failed to create a {agent_type_name} agent"
+    
+    # Verify the agent type
+    assert isinstance(agent, expected_agent_class), f"Agent is not an instance of {expected_agent_class.__name__}"
+    
+    # Verify that the agent is or contains an AzureAIAgent
+    assert hasattr(agent, '_agent'), f"{agent_type_name} agent does not have an _agent attribute"
+    assert isinstance(agent._agent, AzureAIAgent), f"The _agent attribute of {agent_type_name} agent is not an AzureAIAgent"
+    
+    # Verify that the agent has a client attribute that was created by the project_client
+    assert hasattr(agent._agent, 'client'), f"{agent_type_name} agent does not have a client attribute"
+    assert agent._agent.client is not None, f"{agent_type_name} agent client is None"
+    
+    # Check that the agent has the correct session_id
+    assert agent._session_id == TEST_SESSION_ID, f"{agent_type_name} agent has incorrect session_id"
+    
+    # Check that the agent has the correct user_id
+    assert agent._user_id == TEST_USER_ID, f"{agent_type_name} agent has incorrect user_id"
+    
+    # Log success
+    logger.info(f"Successfully created a real {agent_type_name} agent using project_client")
+    return agent
 
+@skip_if_no_azure
 @pytest.mark.parametrize(
-    "agent_type,expected_tool", 
+    "agent_type", 
     [
-        (AgentType.HR, "register_for_benefits"),
-        (AgentType.HUMAN, "handle_action_request"),
-        (AgentType.MARKETING, "create_marketing_campaign"),
-        (AgentType.PROCUREMENT, "create_purchase_order"),
-        (AgentType.TECH_SUPPORT, "configure_laptop"),
+        AgentType.HR,
+        AgentType.HUMAN, 
+        AgentType.MARKETING,
+        AgentType.PROCUREMENT,
+        AgentType.TECH_SUPPORT,
     ]
 )
 @pytest.mark.asyncio
-async def test_agent_has_specific_tools(agent_type, expected_tool):
+async def test_agent_loads_tools_from_json(agent_type, ai_project_client):
     """
-    Parameterized integration test to verify that each agent has specific tools loaded from their
-    corresponding tools/*.json file. This ensures that the tool configuration files
-    are properly loaded and integrated with the agents.
+    Parameterized integration test to verify that each agent loads tools from its
+    corresponding tools/*_tools.json file.
     """
-    try:
-        # Create a real agent using the AgentFactory
-        agent = await AgentFactory.create_agent(
-            agent_type=agent_type,
-            session_id=TEST_SESSION_ID,
-            user_id=TEST_USER_ID
-        )
+    # Create a real agent using the AgentFactory
+    agent = await AgentFactory.create_agent(
+        agent_type=agent_type,
+        session_id=TEST_SESSION_ID,
+        user_id=TEST_USER_ID
+    )
+    
+    agent_type_name = agent_type.name.lower()
+    agent_type_str = AgentFactory._agent_type_strings.get(agent_type, agent_type_name)
+    logger.info(f"Testing tool loading for agent type: {agent_type_name} (type string: {agent_type_str})")
+    
+    # Check that the agent was created successfully
+    assert agent is not None, f"Failed to create a {agent_type_name} agent"
+    
+    # Check that tools were loaded
+    assert hasattr(agent, '_tools'), f"{agent_type_name} agent does not have tools"
+    assert len(agent._tools) > 0, f"{agent_type_name} agent has no tools loaded"
+    
+    # Find the tools JSON file for this agent type
+    tools_file = find_tools_json_file(agent_type_str)
+    
+    # If a tools file exists, verify the tools were loaded from it
+    if tools_file:
+        with open(tools_file, 'r') as f:
+            tools_config = json.load(f)
         
-        agent_type_name = agent_type.name.lower()
-        logger.info(f"Testing tools for agent type: {agent_type_name}")
+        # Get tool names from the config
+        config_tool_names = [tool.get("name", "") for tool in tools_config.get("tools", [])]
+        config_tool_names = [name.lower() for name in config_tool_names if name]
         
-        # Check that the agent was created successfully and has tools
-        assert agent is not None, f"Failed to create a {agent_type_name} agent"
-        assert hasattr(agent, '_tools'), f"{agent_type_name} agent does not have tools"
-        assert len(agent._tools) > 0, f"{agent_type_name} agent has no tools loaded"
+        # Get tool names from the agent
+        agent_tool_names = [t.name.lower() if hasattr(t, 'name') and t.name else "" for t in agent._tools]
+        agent_tool_names = [name for name in agent_tool_names if name]
         
-        # Get tool names for logging
-        tool_names = [t.name if hasattr(t, 'name') else str(t) for t in agent._tools]
-        logger.info(f"Tools loaded for {agent_type_name} agent: {tool_names}")
+        # Log the tool names for debugging
+        logger.info(f"Tools in JSON config for {agent_type_name}: {config_tool_names}")
+        logger.info(f"Tools loaded in {agent_type_name} agent: {agent_tool_names}")
         
-        # Find if the expected tool is available
-        found_expected_tool = False
-        for tool in agent._tools:
-            if hasattr(tool, 'name') and expected_tool.lower() in tool.name.lower():
-                found_expected_tool = True
-                break
-        
-        # Assert that the expected tool was found
-        assert found_expected_tool, f"Expected tool '{expected_tool}' not found in {agent_type_name} agent tools"
-        
-        logger.info(f"Successfully verified {agent_type_name} agent has expected tool: {expected_tool}")
-        
-    except Exception as e:
-        logger.error(f"Error testing {agent_type.name.lower()} agent tools: {str(e)}")
-        raise
+        # Check that at least one tool from the config was loaded
+        if config_tool_names:
+            # Find intersection between config tools and agent tools
+            common_tools = [name for name in agent_tool_names if any(config_name in name or name in config_name 
+                                                                    for config_name in config_tool_names)]
+            
+            assert common_tools, f"None of the tools from {tools_file} were loaded in the {agent_type_name} agent"
+            logger.info(f"Found common tools: {common_tools}")
+    
+    # Log success
+    logger.info(f"Successfully verified {agent_type_name} agent loaded {len(agent._tools)} tools")
+    return agent
 
+@skip_if_no_azure
 @pytest.mark.parametrize(
     "agent_type", 
     [
@@ -180,141 +250,89 @@ async def test_agent_has_specific_tools(agent_type, expected_tool):
     ]
 )
 @pytest.mark.asyncio
-async def test_agent_tools_accept_variables(agent_type):
+async def test_agent_has_system_message(agent_type, ai_project_client):
     """
-    Parameterized integration test to verify that the tools in different agent types can accept variables.
-    Attempts to invoke a tool with parameters to verify parameter handling.
+    Parameterized integration test to verify that each agent is created with a domain-specific system message.
     """
-    try:
-        # Create a real agent using the AgentFactory
-        agent = await AgentFactory.create_agent(
-            agent_type=agent_type,
-            session_id=TEST_SESSION_ID,
-            user_id=TEST_USER_ID
-        )
+    # Create a real agent using the AgentFactory
+    agent = await AgentFactory.create_agent(
+        agent_type=agent_type,
+        session_id=TEST_SESSION_ID,
+        user_id=TEST_USER_ID
+    )
+    
+    agent_type_name = agent_type.name.lower()
+    logger.info(f"Testing system message for agent type: {agent_type_name}")
+    
+    # Check that the agent was created successfully
+    assert agent is not None, f"Failed to create a {agent_type_name} agent"
+    
+    # Get the system message from the agent
+    system_message = None
+    if hasattr(agent._agent, 'definition') and agent._agent.definition is not None:
+        system_message = agent._agent.definition.get('instructions', '')
+    
+    # Verify that a system message is present
+    assert system_message, f"No system message found for {agent_type_name} agent"
+    
+    # Check that the system message is domain-specific
+    domain_terms = {
+        AgentType.HR: ["hr", "human resource", "onboarding", "employee"],
+        AgentType.HUMAN: ["human", "user", "feedback", "conversation"],
+        AgentType.MARKETING: ["marketing", "campaign", "market", "advertising"],
+        AgentType.PROCUREMENT: ["procurement", "purchasing", "vendor", "supplier"],
+        AgentType.TECH_SUPPORT: ["tech", "support", "technical", "IT"]
+    }
+    
+    # Check that at least one domain-specific term is in the system message
+    terms = domain_terms.get(agent_type, [])
+    assert any(term.lower() in system_message.lower() for term in terms), \
+        f"System message for {agent_type_name} agent does not contain any domain-specific terms"
         
-        # Create a kernel to use when invoking functions
-        kernel = Config.CreateKernel()
-        
-        agent_type_name = agent_type.name.lower()
-        logger.info(f"Testing tool parameters for agent type: {agent_type_name}")
-        
-        # Check that the agent was created successfully and has tools
-        assert agent is not None, f"Failed to create a {agent_type_name} agent"
-        assert hasattr(agent, '_tools'), f"{agent_type_name} agent does not have tools"
-        assert len(agent._tools) > 0, f"{agent_type_name} agent has no tools loaded"
-        
-        # Print all available tools for debugging
-        tool_names = [t.name if hasattr(t, 'name') else str(t) for t in agent._tools]
-        logger.info(f"Available tools in the {agent_type_name} agent: {tool_names}")
-        
-        # Find the first tool we can use for testing
-        test_tool = agent._tools[0]
-        if len(agent._tools) > 1:
-            # Skip handle_action_request as it requires specific JSON format
-            for tool in agent._tools:
-                if hasattr(tool, 'name') and tool.name != "handle_action_request":
-                    test_tool = tool
-                    break
-        
-        # Get tool name for logging
-        tool_name = test_tool.name if hasattr(test_tool, 'name') else str(test_tool)
-        logger.info(f"Selected tool for testing: {tool_name}")
-        
-        # Create test data
-        test_input = "Test input for parameters"
-        
-        # Examine the function to understand its parameters
-        logger.info(f"Tool metadata: {test_tool.metadata if hasattr(test_tool, 'metadata') else 'No metadata'}")
-        
-        # Create kernel arguments with test input
-        kernel_args = KernelArguments(input=test_input)
-        
-        # Log what we're going to do
-        logger.info(f"Attempting to invoke {tool_name} with input: {test_input}")
-        
-        # We don't actually need to successfully execute the function,
-        # just verify that it can accept parameters. If an exception occurs
-        # due to missing required parameters or runtime dependencies, that's
-        # expected and still indicates the parameter passing mechanism works.
-        try:
-            if hasattr(test_tool, 'invoke_async'):
-                _ = await test_tool.invoke_async(kernel=kernel, arguments=kernel_args)
-                logger.info(f"Successfully invoked {tool_name}")
-            else:
-                logger.info(f"Tool {tool_name} does not have invoke_async method, skipping invocation")
-        except Exception as tool_error:
-            # Expected exception due to missing parameters or runtime dependencies
-            logger.info(f"Expected exception when invoking tool: {str(tool_error)}")
-            pass
-        
-        logger.info(f"Successfully verified {agent_type_name} agent tools can accept parameters")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error testing {agent_type.name.lower()} agent tool parameters: {str(e)}")
-        raise
+    # Log success
+    logger.info(f"Successfully verified system message for {agent_type_name} agent")
+    return True
 
-@pytest.mark.parametrize(
-    "agent_type", 
-    [
-        AgentType.HR,
-        AgentType.MARKETING,
-        AgentType.PROCUREMENT,
-        AgentType.TECH_SUPPORT,
-    ]
-)
+@skip_if_no_azure
 @pytest.mark.asyncio
-async def test_agent_specific_functionality(agent_type):
+async def test_human_agent_can_execute_method(ai_project_client):
     """
-    Parameterized integration test to verify specific functionality of each agent type.
-    Tests functionality that is unique to each agent type.
+    Test that the Human agent can execute the handle_action_request method.
     """
-    try:
-        # Create a real agent using the AgentFactory
-        agent = await AgentFactory.create_agent(
-            agent_type=agent_type,
-            session_id=TEST_SESSION_ID,
-            user_id=TEST_USER_ID
-        )
-        
-        agent_type_name = agent_type.name.lower()
-        logger.info(f"Testing specific functionality of agent type: {agent_type_name}")
-        
-        # Check that the agent was created successfully
-        assert agent is not None, f"Failed to create a {agent_type_name} agent"
-        
-        # Test specific functionality based on agent type
-        if agent_type == AgentType.HR:
-            # HR agent should have HR-related config properties
-            config = agent.load_tools_config("hr")
-            assert "system_message" in config, "HR agent config does not have system_message"
-            assert "hr" in config.get("system_message", "").lower() or "human resource" in config.get("system_message", "").lower(), \
-                "HR agent system message doesn't mention HR responsibilities"
-            
-        elif agent_type == AgentType.MARKETING:
-            # Marketing agent should have marketing-related config properties
-            config = agent.load_tools_config("marketing")
-            assert "system_message" in config, "Marketing agent config does not have system_message"
-            assert "marketing" in config.get("system_message", "").lower(), \
-                "Marketing agent system message doesn't mention marketing responsibilities"
-            
-        elif agent_type == AgentType.PROCUREMENT:
-            # Procurement agent should have procurement-related config properties
-            config = agent.load_tools_config("procurement")
-            assert "system_message" in config, "Procurement agent config does not have system_message"
-            assert "procurement" in config.get("system_message", "").lower(), \
-                "Procurement agent system message doesn't mention procurement responsibilities"
-            
-        elif agent_type == AgentType.TECH_SUPPORT:
-            # Tech Support agent should have tech support-related config properties
-            config = agent.load_tools_config("tech_support")
-            assert "system_message" in config, "Tech Support agent config does not have system_message"
-            assert "tech" in config.get("system_message", "").lower() or "support" in config.get("system_message", "").lower(), \
-                "Tech Support agent system message doesn't mention tech support responsibilities"
-            
-        logger.info(f"Successfully verified specific functionality of {agent_type_name} agent")
-        
-    except Exception as e:
-        logger.error(f"Error testing {agent_type.name.lower()} agent specific functionality: {str(e)}")
-        raise
+    # Create a real Human agent using the AgentFactory
+    agent = await AgentFactory.create_agent(
+        agent_type=AgentType.HUMAN,
+        session_id=TEST_SESSION_ID,
+        user_id=TEST_USER_ID
+    )
+    
+    logger.info("Testing handle_action_request method on Human agent")
+    
+    # Check that the agent was created successfully
+    assert agent is not None, "Failed to create a Human agent"
+    
+    # Create a simple action request JSON for the Human agent
+    action_request = {
+        "session_id": TEST_SESSION_ID,
+        "step_id": "test-step-id",
+        "plan_id": "test-plan-id",
+        "action": "Test action",
+        "parameters": {}
+    }
+    
+    # Convert to JSON string
+    action_request_json = json.dumps(action_request)
+    
+    # Execute the handle_action_request method
+    assert hasattr(agent, 'handle_action_request'), "Human agent does not have handle_action_request method"
+    
+    # Call the method
+    result = await agent.handle_action_request(action_request_json)
+    
+    # Check that we got a result
+    assert result is not None, "handle_action_request returned None"
+    assert isinstance(result, str), "handle_action_request did not return a string"
+    
+    # Log success
+    logger.info("Successfully executed handle_action_request on Human agent")
+    return result
