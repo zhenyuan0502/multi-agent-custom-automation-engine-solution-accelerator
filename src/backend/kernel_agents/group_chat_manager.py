@@ -9,10 +9,7 @@ from semantic_kernel.agents import AgentGroupChat
 from semantic_kernel.agents.strategies import (
     SequentialSelectionStrategy,
     TerminationStrategy,
-    RoundRobinSelectionStrategy,
 )
-from semantic_kernel.functions import KernelFunction
-from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
