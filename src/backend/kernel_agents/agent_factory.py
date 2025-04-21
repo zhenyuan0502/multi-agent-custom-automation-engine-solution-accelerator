@@ -9,7 +9,8 @@ from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
 from models.agent_types import AgentType
 from kernel_agents.agent_base import BaseAgent
-from config_kernel import Config
+# Import the new AppConfig instance
+from app_config import config
 
 # Import all specialized agent implementations
 from kernel_agents.hr_agent import HrAgent
@@ -136,8 +137,8 @@ class AgentFactory:
         # Create memory store
         memory_store = CosmosMemoryContext(session_id, user_id)
         
-        # Create a kernel
-        kernel = Config.CreateKernel()
+        # Create a kernel using the AppConfig instance
+        kernel = config.create_kernel()
         
         # Use default system message if none provided
         if system_message is None:
@@ -154,7 +155,7 @@ class AgentFactory:
         definition = None
         client = None
         try:
-            client = Config.GetAIProjectClient()
+            client = config.get_ai_project_client()
         except Exception as client_exc:
             logger.error(f"Error creating AIProjectClient: {client_exc}")
             raise
@@ -162,7 +163,7 @@ class AgentFactory:
             if tools:
                 # Create the agent definition using the AIProjectClient (project-based pattern)
                 definition = await client.agents.create_agent(
-                    model=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                    model=config.AZURE_OPENAI_DEPLOYMENT_NAME,
                     name=agent_type_str,
                     instructions=system_message,
                     temperature=temperature,
@@ -239,11 +240,11 @@ class AgentFactory:
                     agent.add_function(tool)
             return agent
         
-        # Create a kernel
-        kernel = Config.CreateKernel()
+        # Create a kernel using the AppConfig instance
+        kernel = config.create_kernel()
         
-        # Await creation since CreateAzureAIAgent is async
-        agent = await Config.CreateAzureAIAgent(
+        # Await creation since create_azure_ai_agent is async
+        agent = await config.create_azure_ai_agent(
             kernel=kernel,
             agent_name=agent_name,
             instructions=system_prompt

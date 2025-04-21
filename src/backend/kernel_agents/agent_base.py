@@ -17,7 +17,8 @@ from models.messages_kernel import (
     Step,
     StepStatus,
 )
-from config_kernel import Config
+# Import the new AppConfig instance
+from app_config import config
 from event_utils import track_event_if_configured
 
 # Default formatting instructions used across agents
@@ -98,7 +99,7 @@ class BaseAgent(AzureAIAgent):
         This method must be called after creating the agent to complete initialization.
         """
         # Create Azure AI Agent or fallback
-        self._agent = await Config.CreateAzureAIAgent(
+        self._agent = await config.create_azure_ai_agent(
             kernel=self._kernel,
             agent_name=self._agent_name,
             instructions=self._system_message
