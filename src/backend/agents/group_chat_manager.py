@@ -9,8 +9,8 @@ from autogen_core.base import AgentId, MessageContext
 from autogen_core.components import RoutedAgent, default_subscription, message_handler
 from autogen_core.components.models import AzureOpenAIChatCompletionClient
 
-from context.cosmos_memory import CosmosBufferedChatCompletionContext
-from models.messages import (
+from src.backend.context.cosmos_memory import CosmosBufferedChatCompletionContext
+from src.backend.models.messages import (
     ActionRequest,
     AgentMessage,
     BAgentType,
@@ -22,7 +22,7 @@ from models.messages import (
     StepStatus,
 )
 
-from event_utils import track_event_if_configured
+from src.backend.event_utils import track_event_if_configured
 
 
 @default_subscription
@@ -305,12 +305,12 @@ class GroupChatManager(RoutedAgent):
         )
 
         track_event_if_configured(
-            f"Group Chat Manager - Requesting {step.agent.value.title()} to perform the action and added into the cosmos",
+            f"Group Chat Manager - Requesting {formatted_agent} to perform the action and added into the cosmos",
             {
                 "session_id": session_id,
                 "user_id": self._user_id,
                 "plan_id": step.plan_id,
-                "content": f"Requesting {step.agent.value.title()} to perform action: {step.action}",
+                "content": f"Requesting {formatted_agent} to perform action: {step.action}",
                 "source": "GroupChatManager",
                 "step_id": step.id,
             },

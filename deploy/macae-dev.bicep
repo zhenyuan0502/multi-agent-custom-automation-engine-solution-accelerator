@@ -77,6 +77,7 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
         locationName: cosmosLocation
       }
     ]
+    capabilities: [ { name: 'EnableServerless' } ]
   }
 
   resource contributorRoleDefinition 'sqlRoleDefinitions' existing = {
@@ -98,9 +99,6 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
       resource: {
         id: 'autogen'
         createMode: 'Default'
-      }
-      options: {
-        throughput: 400
       }
     }
 
