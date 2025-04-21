@@ -9,7 +9,7 @@ import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 
-from kernel_agents.agent_utils import load_tools_config, get_tools_from_config
+from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
     AgentMessage,
@@ -74,7 +74,7 @@ class PlannerAgent:
         self._agent_tools_list = agent_tools_list or []
         
         # Load configuration
-        config = load_tools_config("planner", config_path)
+        config = BaseAgent.load_tools_config("planner", config_path)
         self._system_message = config.get(
             "system_message", 
             "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
