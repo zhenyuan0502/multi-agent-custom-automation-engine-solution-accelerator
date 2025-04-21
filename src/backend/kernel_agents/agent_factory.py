@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from semantic_kernel import Kernel
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
+import inspect
 
 from models.agent_types import AgentType
 from kernel_agents.agent_base import BaseAgent
@@ -17,7 +18,6 @@ from kernel_agents.hr_agent import HrAgent
 from kernel_agents.human_agent import HumanAgent 
 from kernel_agents.marketing_agent import MarketingAgent
 from kernel_agents.generic_agent import GenericAgent
-from kernel_agents.planner_agent import PlannerAgent
 from kernel_agents.tech_support_agent import TechSupportAgent
 from kernel_agents.procurement_agent import ProcurementAgent
 from kernel_agents.product_agent import ProductAgent
@@ -41,7 +41,6 @@ class AgentFactory:
         AgentType.TECH_SUPPORT: TechSupportAgent,
         AgentType.GENERIC: GenericAgent,
         AgentType.HUMAN: HumanAgent,
-        AgentType.PLANNER: PlannerAgent,
         AgentType.GROUP_CHAT_MANAGER: GroupChatManager,
     }
 
@@ -54,7 +53,6 @@ class AgentFactory:
         AgentType.TECH_SUPPORT: "tech_support",
         AgentType.GENERIC: "generic",
         AgentType.HUMAN: "human",
-        AgentType.PLANNER: "planner",
         AgentType.GROUP_CHAT_MANAGER: "group_chat_manager",
     }
 
@@ -67,7 +65,6 @@ class AgentFactory:
         AgentType.TECH_SUPPORT: "You are a technical support expert helping with technical issues.",
         AgentType.GENERIC: "You are a helpful assistant ready to help with various tasks.",
         AgentType.HUMAN: "You are representing a human user in the conversation.",
-        AgentType.PLANNER: "You are a planner agent responsible for creating and managing plans.",
         AgentType.GROUP_CHAT_MANAGER: "You are a group chat manager coordinating the conversation between different agents.",
     }
 
@@ -128,7 +125,7 @@ class AgentFactory:
         # Check if we already have an agent in the cache
         if session_id in cls._agent_cache and agent_type in cls._agent_cache[session_id]:
             return cls._agent_cache[session_id][agent_type]
-            
+
         # Get the agent class
         agent_class = cls._agent_classes.get(agent_type)
         if not agent_class:
@@ -177,27 +174,31 @@ class AgentFactory:
         
         # Create the agent instance using the project-based pattern
         try:
-            agent = agent_class(
-                agent_name=agent_type_str,
-                kernel=kernel,
-                session_id=session_id,
-                user_id=user_id,
-                memory_store=memory_store,
-                tools=tools,
-                system_message=system_message,
-                client=client,
-                definition=definition,
+            # Filter kwargs to only those accepted by the agent's __init__
+            agent_init_params = inspect.signature(agent_class.__init__).parameters
+            valid_keys = set(agent_init_params.keys()) - {"self"}
+            filtered_kwargs = {k: v for k, v in {
+                "agent_name": agent_type_str,
+                "kernel": kernel,
+                "session_id": session_id,
+                "user_id": user_id,
+                "memory_store": memory_store,
+                "tools": tools,
+                "system_message": system_message,
+                "client": client,
+                "definition": definition,
                 **kwargs
-            )
+            }.items() if k in valid_keys}
+            agent = agent_class(**filtered_kwargs)
             logger.debug(f"[DEBUG] Agent object after instantiation: {agent}")
-            # Initialize the agent asynchronously
-            init_result = await agent.async_init()
-            logger.debug(f"[DEBUG] Result of agent.async_init(): {init_result}")
+            # Initialize the agent asynchronously if it has async_init
+            if hasattr(agent, 'async_init') and inspect.iscoroutinefunction(agent.async_init):
+                init_result = await agent.async_init()
+                logger.debug(f"[DEBUG] Result of agent.async_init(): {init_result}")
             # Register tools with Azure AI Agent for LLM function calls
-            if hasattr(agent._agent, 'add_function') and tools:
+            if hasattr(agent, '_agent') and hasattr(agent._agent, 'add_function') and tools:
                 for fn in tools:
                     agent._agent.add_function(fn)
-        
         except Exception as e:
             logger.error(
                 f"Error creating agent of type {agent_type} with parameters: {e}"

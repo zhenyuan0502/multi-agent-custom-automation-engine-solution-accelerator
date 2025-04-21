@@ -46,7 +46,6 @@ class PlannerAgent:
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
-        config_path: Optional[str] = None,
         available_agents: List[str] = None,
         agent_tools_list: List[str] = None
     ) -> None:
@@ -73,17 +72,15 @@ class PlannerAgent:
                                                     "TechSupportAgent", "GenericAgent"]
         self._agent_tools_list = agent_tools_list or []
         
-        # Load configuration
-        config = BaseAgent.load_tools_config("planner", config_path)
-        self._system_message = config.get(
-            "system_message", 
-            "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
-        )
+
+        self._system_message = "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
+        
         
         # Create the agent
-        self._agent = kernel.create_semantic_function(
+        self._agent = KernelFunction.from_prompt(
             function_name="PlannerFunction",
-            prompt=self._system_message,
+            plugin_name="planner_plugin",
+            prompt_template=self._system_message,
             description="Creates and manages execution plans"
         )
         

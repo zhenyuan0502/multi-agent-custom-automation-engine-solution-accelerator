@@ -301,7 +301,7 @@ class BaseAgent(AzureAIAgent):
                 # Register the function with the kernel
                 kernel.add_function(plugin_name, kernel_func)
                 kernel_functions.append(kernel_func)
-                logging.info(f"Successfully created dynamic tool '{function_name}' for {agent_type}")
+                #logging.info(f"Successfully created dynamic tool '{function_name}' for {agent_type}")
             except Exception as e:
                 logging.error(f"Failed to create tool '{tool.get('name', 'unknown')}': {str(e)}")
                 

@@ -20,8 +20,7 @@ from semantic_kernel.functions.kernel_arguments import KernelArguments
 # Local imports
 from middleware.health_check import HealthCheckMiddleware
 from auth.auth_utils import get_authenticated_user_details
-# Replace Config with our new AppConfig
-from app_config import config
+from config_kernel import Config
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
     HumanFeedback,
@@ -66,8 +65,7 @@ logging.getLogger("azure.monitor.opentelemetry.exporter.export._base").setLevel(
 # Initialize the FastAPI app
 app = FastAPI()
 
-# Use the frontend URL from our AppConfig instance
-frontend_url = config.FRONTEND_SITE_NAME
+frontend_url = Config.FRONTEND_SITE_NAME
 
 # Add this near the top of your app.py, after initializing the app
 app.add_middleware(
