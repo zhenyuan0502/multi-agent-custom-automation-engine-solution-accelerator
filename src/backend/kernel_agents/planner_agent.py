@@ -3,12 +3,13 @@ import uuid
 import json
 import re
 from typing import Dict, List, Optional, Any, Tuple
+from pydantic import BaseModel, Field
 
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 
-from kernel_agents.agent_base import BaseAgent
+from kernel_agents.agent_utils import load_tools_config, get_tools_from_config
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
     AgentMessage,
@@ -21,7 +22,18 @@ from models.messages_kernel import (
 )
 from event_utils import track_event_if_configured
 
-class PlannerAgent(BaseAgent):
+# Define structured output models
+class StructuredOutputStep(BaseModel):
+    action: str = Field(description="Detailed description of the step action")
+    agent: str = Field(description="Name of the agent to execute this step")
+
+class StructuredOutputPlan(BaseModel):
+    initial_goal: str = Field(description="The goal of the plan")
+    steps: List[StructuredOutputStep] = Field(description="List of steps to achieve the goal")
+    summary_plan_and_steps: str = Field(description="Brief summary of the plan and steps")
+    human_clarification_request: Optional[str] = Field(None, description="Any additional information needed from the human")
+
+class PlannerAgent:
     """Planner agent implementation using Semantic Kernel.
     
     This agent creates and manages plans based on user tasks, breaking them down into steps
@@ -34,12 +46,7 @@ class PlannerAgent(BaseAgent):
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
-        tools: Optional[List[KernelFunction]] = None,
-        system_message: Optional[str] = None,
-        agent_name: str = "PlannerAgent",
         config_path: Optional[str] = None,
-        client=None,
-        definition=None,
         available_agents: List[str] = None,
         agent_tools_list: List[str] = None
     ) -> None:
@@ -50,42 +57,34 @@ class PlannerAgent(BaseAgent):
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
-            tools: List of tools available to this agent (optional)
-            system_message: Optional system message for the agent
-            agent_name: Optional name for the agent (defaults to "PlannerAgent")
             config_path: Optional path to the Planner tools configuration file
-            client: Optional client instance
-            definition: Optional definition instance
             available_agents: List of available agent names for creating steps
             agent_tools_list: List of available tools across all agents
         """
+        self._kernel = kernel
+        self._session_id = session_id
+        self._user_id = user_id
+        self._memory_store = memory_store
+        self._config_path = config_path
+        
         # Store the available agents and their tools
         self._available_agents = available_agents or ["HumanAgent", "HrAgent", "MarketingAgent", 
                                                     "ProductAgent", "ProcurementAgent", 
                                                     "TechSupportAgent", "GenericAgent"]
         self._agent_tools_list = agent_tools_list or []
         
-        # Load configuration if tools not provided
-        if tools is None:
-            config = self.load_tools_config("planner", config_path)
-            tools = self.get_tools_from_config(kernel, "planner", config_path)
-            if not system_message:
-                system_message = config.get(
-                    "system_message", 
-                    "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
-                )
-            agent_name = config.get("agent_name", agent_name)
+        # Load configuration
+        config = load_tools_config("planner", config_path)
+        self._system_message = config.get(
+            "system_message", 
+            "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
+        )
         
-        super().__init__(
-            agent_name=agent_name,
-            kernel=kernel,
-            session_id=session_id,
-            user_id=user_id,
-            memory_store=memory_store,
-            tools=tools,
-            system_message=system_message,
-            client=client,
-            definition=definition
+        # Create the agent
+        self._agent = kernel.create_semantic_function(
+            function_name="PlannerFunction",
+            prompt=self._system_message,
+            description="Creates and manages execution plans"
         )
         
     async def handle_input_task(self, kernel_arguments: KernelArguments) -> str:
@@ -234,23 +233,31 @@ class PlannerAgent(BaseAgent):
             instruction = self._generate_instruction(input_task.description)
             
             # Ask the LLM to generate a structured plan
-            messages = [{
-                "role": "user", 
-                "content": instruction
-            }]
-            
-            result = await self._agent.invoke_async(messages=messages)
+            args = KernelArguments(input=instruction)
+            result = await self._agent.invoke_async(kernel_arguments=args)
             response_content = result.value.strip()
             
-            # Parse the JSON response
+            # Parse the JSON response using the structured output model
             try:
-                parsed_result = json.loads(response_content)
+                # First try to parse using Pydantic model
+                try:
+                    parsed_result = StructuredOutputPlan.parse_raw(response_content)
+                except Exception:
+                    # If direct parsing fails, try to extract JSON first
+                    json_match = re.search(r'```json\s*(.*?)\s*```', response_content, re.DOTALL)
+                    if json_match:
+                        json_content = json_match.group(1)
+                        parsed_result = StructuredOutputPlan.parse_raw(json_content)
+                    else:
+                        # Try parsing as regular JSON then convert to Pydantic model
+                        json_data = json.loads(response_content)
+                        parsed_result = StructuredOutputPlan.parse_obj(json_data)
                 
                 # Extract plan details
-                initial_goal = parsed_result.get("initial_goal", input_task.description)
-                steps_data = parsed_result.get("steps", [])
-                summary = parsed_result.get("summary_plan_and_steps", "Plan created based on task description")
-                human_clarification_request = parsed_result.get("human_clarification_request")
+                initial_goal = parsed_result.initial_goal
+                steps_data = parsed_result.steps
+                summary = parsed_result.summary_plan_and_steps
+                human_clarification_request = parsed_result.human_clarification_request
                 
                 # Create the Plan instance
                 plan = Plan(
@@ -282,8 +289,13 @@ class PlannerAgent(BaseAgent):
                 # Create steps from the parsed data
                 steps = []
                 for step_data in steps_data:
-                    action = step_data.get("action", "")
-                    agent_name = step_data.get("agent", "GenericAgent")
+                    action = step_data.action
+                    agent_name = step_data.agent
+                    
+                    # Validate agent name
+                    if agent_name not in self._available_agents:
+                        logging.warning(f"Invalid agent name: {agent_name}, defaulting to GenericAgent")
+                        agent_name = "GenericAgent"
                     
                     # Create the step
                     step = Step(
@@ -315,8 +327,9 @@ class PlannerAgent(BaseAgent):
                 
                 return plan, steps
                 
-            except json.JSONDecodeError:
+            except Exception as e:
                 # If JSON parsing fails, use regex to extract steps
+                logging.warning(f"Failed to parse JSON response: {e}. Falling back to text parsing.")
                 return await self._create_plan_from_text(input_task, response_content)
                 
         except Exception as e:

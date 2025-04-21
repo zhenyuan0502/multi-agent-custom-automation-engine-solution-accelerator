@@ -2,9 +2,15 @@ import logging
 import json
 from datetime import datetime
 import re
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 
 import semantic_kernel as sk
+from semantic_kernel.agents import AgentGroupChat
+from semantic_kernel.agents.strategies import (
+    SequentialSelectionStrategy,
+    TerminationStrategy,
+    RoundRobinSelectionStrategy,
+)
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 
@@ -18,12 +24,19 @@ from models.messages_kernel import (
     StepStatus,
     PlanStatus,
     HumanFeedbackStatus,
+    InputTask,
+    Plan,
 )
+from models.agent_types import AgentType
 from event_utils import track_event_if_configured
 
 
-class GroupChatManager(BaseAgent):
-    """Group Chat Manager implementation using Semantic Kernel."""
+class GroupChatManager:
+    """Group Chat Manager implementation using Semantic Kernel's AgentGroupChat.
+    
+    This manager coordinates conversations between different agents and ensures
+    the plan executes smoothly by orchestrating agent interactions.
+    """
 
     def __init__(
         self,
@@ -31,12 +44,8 @@ class GroupChatManager(BaseAgent):
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
-        tools: Optional[List[KernelFunction]] = None,
-        system_message: Optional[str] = None,
-        agent_name: str = "GroupChatManager",
         config_path: Optional[str] = None,
-        client=None,
-        definition=None,
+        available_agents: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Initialize the Group Chat Manager.
         
@@ -45,35 +54,36 @@ class GroupChatManager(BaseAgent):
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
-            tools: List of tools available to this agent (optional)
-            system_message: Optional system message for the agent
-            agent_name: Optional name for the agent (defaults to "GroupChatManager")
             config_path: Optional path to the group_chat_manager tools configuration file
-            client: Optional client instance
-            definition: Optional definition instance
+            available_agents: Dictionary of available agents mapped by their name
         """
-        # Load configuration if tools not provided
-        if tools is None:
-            config = self.load_tools_config("group_chat_manager", config_path)
-            tools = self.get_tools_from_config(kernel, "group_chat_manager", config_path)
-            if not system_message:
-                system_message = config.get("system_message", "You are a Group Chat Manager. You coordinate the conversation between different agents and ensure the plan executes smoothly.")
-            agent_name = config.get("agent_name", agent_name)
+        self._kernel = kernel
+        self._session_id = session_id
+        self._user_id = user_id
+        self._memory_store = memory_store
+        self._config_path = config_path
         
-        super().__init__(
-            agent_name=agent_name,
-            kernel=kernel,
-            session_id=session_id,
-            user_id=user_id,
-            memory_store=memory_store,
-            tools=tools,
-            system_message=system_message,
-            client=client,
-            definition=definition
+        # Store available agents
+        self._agent_instances = available_agents or {}
+        
+        # Initialize the AgentGroupChat later when all agents are registered
+        self._agent_group_chat = None
+        self._initialized = False
+
+    async def initialize_group_chat(self) -> None:
+        """Initialize the AgentGroupChat with registered agents and strategies."""
+        if self._initialized:
+            return
+            
+        # Create the AgentGroupChat with registered agents and strategies
+        self._agent_group_chat = AgentGroupChat(
+            agents=list(self._agent_instances.values()),
+            termination_strategy=self.PlanTerminationStrategy(agents=list(self._agent_instances.values())),
+            selection_strategy=self.PlanSelectionStrategy(agents=list(self._agent_instances.values())),
         )
         
-        # Dictionary of agent instances for routing
-        self._agent_instances = {}
+        self._initialized = True
+        logging.info(f"Initialized AgentGroupChat with {len(self._agent_instances)} agents")
 
     async def register_agent(self, agent_name: str, agent: BaseAgent) -> None:
         """Register an agent with the Group Chat Manager.
@@ -83,128 +93,161 @@ class GroupChatManager(BaseAgent):
             agent: The agent instance
         """
         self._agent_instances[agent_name] = agent
+        self._initialized = False  # Need to re-initialize after adding new agents
         logging.info(f"Registered agent {agent_name} with Group Chat Manager")
 
-    async def execute_next_step(self, kernel_arguments: KernelArguments) -> str:
-        """Execute the next step in the plan.
+    class PlanSelectionStrategy(SequentialSelectionStrategy):
+        """Strategy for determining which agent should take the next turn in the chat.
+        
+        This strategy follows the progression of a plan, selecting agents based on
+        the current step or phase of the plan execution.
+        """
+
+        async def select_agent(self, agents, history):
+            """Select the next agent that should take the turn in the chat.
+            
+            Args:
+                agents: List of available agents
+                history: Chat history
+                
+            Returns:
+                The next agent to take the turn
+            """
+            # If no history, start with the PlannerAgent
+            if not history:
+                return next((agent for agent in agents if agent.name == "PlannerAgent"), None)
+            
+            # Get the last message
+            last_message = history[-1]
+            
+            match last_message.name:
+                case "PlannerAgent":
+                    # After the planner creates a plan, HumanAgent should review it
+                    return next((agent for agent in agents if agent.name == "HumanAgent"), None)
+                    
+                case "HumanAgent":
+                    # After human feedback, the specific agent for the step should proceed
+                    # Need to extract which agent should be next from the plan
+                    # For demo purposes, going with a simple approach
+                    # In a real implementation, we would look up the next step in the plan
+                    return next((agent for agent in agents if agent.name == "GenericAgent"), None)
+                    
+                case "GroupChatManager":
+                    # If the manager just assigned a step, the specific agent should execute it
+                    # For demo purposes, we'll just use the next agent in a simple rotation
+                    current_agent_index = next((i for i, agent in enumerate(agents) 
+                                              if agent.name == last_message.name), 0)
+                    next_index = (current_agent_index + 1) % len(agents)
+                    return agents[next_index]
+                    
+                case _:
+                    # Default to the Group Chat Manager to coordinate next steps
+                    return next((agent for agent in agents if agent.name == "GroupChatManager"), None)
+    
+    class PlanTerminationStrategy(TerminationStrategy):
+        """Strategy for determining when the agent group chat should terminate.
+        
+        This strategy decides when the plan is complete or when a human needs to
+        provide additional input to continue.
+        """
+        
+        def __init__(self, agents, maximum_iterations=10, automatic_reset=True):
+            """Initialize the termination strategy.
+            
+            Args:
+                agents: List of agents in the group chat
+                maximum_iterations: Maximum number of iterations before termination
+                automatic_reset: Whether to reset the agent after termination
+            """
+            super().__init__(agents, maximum_iterations, automatic_reset)
+        
+        async def should_agent_terminate(self, agent, history):
+            """Check if the agent should terminate.
+            
+            Args:
+                agent: The current agent
+                history: Chat history
+                
+            Returns:
+                True if the agent should terminate, False otherwise
+            """
+            # Default termination conditions
+            if not history:
+                return False
+            
+            last_message = history[-1]
+            
+            # End the chat if the plan is completed or if human intervention is required
+            if "plan completed" in last_message.content.lower():
+                return True
+                
+            if "human intervention required" in last_message.content.lower():
+                return True
+                
+            # Terminate if we encounter a specific error condition
+            if "error" in last_message.content.lower() and "cannot proceed" in last_message.content.lower():
+                return True
+                
+            # Otherwise, continue the chat
+            return False
+
+    async def handle_input_task(self, input_task_json: str) -> str:
+        """Handle the initial input task from the user.
         
         Args:
-            kernel_arguments: Contains session_id and plan_id
+            input_task_json: Input task in JSON format
             
         Returns:
             Status message
         """
-        session_id = kernel_arguments["session_id"]
-        plan_id = kernel_arguments["plan_id"]
+        # Parse the input task
+        input_task = InputTask.parse_raw(input_task_json)
         
-        # Get all steps for the plan
-        steps = await self._memory_store.get_steps_for_plan(plan_id, session_id)
-        
-        # Find the next step to execute (first approved or planned step)
-        next_step = None
-        for step in steps:
-            if step.status == StepStatus.approved or step.status == StepStatus.planned:
-                next_step = step
-                break
-        
-        if not next_step:
-            # All steps are completed, mark plan as completed
-            plan = await self._memory_store.get_plan(plan_id)
-            if plan:
-                plan.overall_status = PlanStatus.completed
-                await self._memory_store.update_plan(plan)
-            return "All steps completed. Plan execution finished."
-        
-        # Update step status to in_progress
-        next_step.status = StepStatus.in_progress
-        await self._memory_store.update_step(next_step)
-        
-        # Generate conversation history for context
-        plan = await self._memory_store.get_plan(plan_id)
-        conversation_history = await self._generate_conversation_history(steps, next_step.id, plan)
-        
-        # Create action request with conversation history for context
-        action_with_history = f"{conversation_history} Here is the step to action: {next_step.action}. ONLY perform the steps and actions required to complete this specific step, the other steps have already been completed. Only use the conversational history for additional information, if it's required to complete the step you have been assigned."
-        
-        action_request = ActionRequest(
-            step_id=next_step.id,
-            plan_id=plan_id,
-            session_id=session_id,
-            action=action_with_history
-        )
-        
-        # Get the appropriate agent
-        agent_name = next_step.agent
-        if agent_name not in self._agent_instances:
-            logging.warning(f"Agent {agent_name} not found. Using GenericAgent instead.")
-            agent_name = "GenericAgent"
-            if agent_name not in self._agent_instances:
-                return f"No agent found to handle step {next_step.id}"
-        
-        # Log the request
-        formatted_agent = re.sub(r"([a-z])([A-Z])", r"\1 \2", agent_name)
-        
-        # Store the agent message in cosmos
+        # Store the user's message
         await self._memory_store.add_item(
             AgentMessage(
-                session_id=session_id,
+                session_id=input_task.session_id,
                 user_id=self._user_id,
-                plan_id=plan_id,
-                content=f"Requesting {formatted_agent} to perform action: {next_step.action}",
-                source="GroupChatManager",
-                step_id=next_step.id,
+                plan_id="",
+                content=f"{input_task.description}",
+                source="HumanAgent",
+                step_id="",
             )
         )
         
         track_event_if_configured(
-            f"Group Chat Manager - Requesting {agent_name} to perform the action and added into the cosmos",
+            "Group Chat Manager - Received and added input task into the cosmos",
             {
-                "session_id": session_id,
+                "session_id": input_task.session_id,
                 "user_id": self._user_id,
-                "plan_id": plan_id,
-                "content": f"Requesting {agent_name} to perform action: {next_step.action}",
-                "source": "GroupChatManager",
-                "step_id": next_step.id,
+                "content": input_task.description,
+                "source": "HumanAgent",
             },
         )
         
-        # Special handling for HumanAgent - mark as completed since human feedback is already received
-        if agent_name == "HumanAgent":
-            # Mark as completed since we have received the human feedback
-            next_step.status = StepStatus.completed
-            await self._memory_store.update_step(next_step)
+        # Ensure the planner agent is registered
+        if "PlannerAgent" not in self._agent_instances:
+            return "PlannerAgent not registered. Cannot create plan."
             
-            logging.info("Marking the step as complete - Since we have received the human feedback")
-            track_event_if_configured(
-                "Group Chat Manager - Steps completed - Received the human feedback and updated into the cosmos",
-                {
-                    "session_id": session_id,
-                    "user_id": self._user_id,
-                    "plan_id": plan_id,
-                    "content": "Marking the step as complete - Since we have received the human feedback",
-                    "source": agent_name,
-                    "step_id": next_step.id,
-                },
-            )
-            return f"Step {next_step.id} for HumanAgent marked as completed"
-        else:
-            # Send action request to the agent
-            agent = self._agent_instances[agent_name]
-            await agent.handle_action_request(action_request.json())
-            
-            return f"Step {next_step.id} execution started with {agent_name}"
-            
-    async def handle_human_feedback(self, kernel_arguments: KernelArguments) -> str:
+        # Get the planner agent
+        planner_agent = self._agent_instances["PlannerAgent"]
+        
+        # Forward the input task to the planner agent to create a plan
+        planner_args = KernelArguments(input_task_json=input_task_json)
+        plan_result = await planner_agent.handle_input_task(planner_args)
+        
+        return f"Plan creation initiated: {plan_result}"
+    
+    async def handle_human_feedback(self, human_feedback_json: str) -> str:
         """Handle human feedback on steps.
         
         Args:
-            kernel_arguments: Contains human_feedback_json string
+            human_feedback_json: Human feedback in JSON format
             
         Returns:
             Status message
         """
         # Parse the human feedback
-        human_feedback_json = kernel_arguments["human_feedback_json"]
         human_feedback = json.loads(human_feedback_json)
         
         session_id = human_feedback.get("session_id", "")
@@ -246,7 +289,7 @@ class GroupChatManager(BaseAgent):
             if step:
                 await self._update_step_status(step, approved, received_human_feedback)
                 if approved:
-                    return f"Step {step_id} approved and updated"
+                    return await self._execute_step(session_id, step)
                 else:
                     # Handle rejected step
                     step.status = StepStatus.rejected
@@ -273,6 +316,8 @@ class GroupChatManager(BaseAgent):
             for step in steps:
                 if step.status == StepStatus.planned:
                     await self._update_step_status(step, approved, received_human_feedback)
+                    if approved:
+                        await self._execute_step(session_id, step)
                     updates_count += 1
             
             return f"Updated {updates_count} steps with human feedback"
@@ -307,6 +352,188 @@ class GroupChatManager(BaseAgent):
                 "source": step.agent,
             },
         )
+        
+    async def _execute_step(self, session_id: str, step: Step) -> str:
+        """Execute a step by sending an action request to the appropriate agent.
+        
+        Args:
+            session_id: The session identifier
+            step: The step to execute
+            
+        Returns:
+            Status message
+        """
+        # Update step status
+        step.status = StepStatus.action_requested
+        await self._memory_store.update_step(step)
+        
+        track_event_if_configured(
+            "Group Chat Manager - Update step to action_requested and updated into the cosmos",
+            {
+                "status": StepStatus.action_requested,
+                "session_id": step.session_id,
+                "user_id": self._user_id,
+                "source": step.agent,
+            },
+        )
+        
+        # Generate conversation history for context
+        plan = await self._memory_store.get_plan(step.plan_id)
+        steps = await self._memory_store.get_steps_for_plan(step.plan_id, session_id)
+        conversation_history = await self._generate_conversation_history(steps, step.id, plan)
+        
+        # Create action request with conversation history for context
+        action_with_history = f"{conversation_history} Here is the step to action: {step.action}. ONLY perform the steps and actions required to complete this specific step, the other steps have already been completed. Only use the conversational history for additional information, if it's required to complete the step you have been assigned."
+        
+        # Format agent name for display
+        if hasattr(step, 'agent') and step.agent:
+            agent_name = step.agent
+            formatted_agent = re.sub(r"([a-z])([A-Z])", r"\1 \2", agent_name)
+        else:
+            # Default to GenericAgent if none specified
+            agent_name = "GenericAgent"
+            formatted_agent = "Generic Agent"
+        
+        # Store the agent message
+        await self._memory_store.add_item(
+            AgentMessage(
+                session_id=session_id,
+                user_id=self._user_id,
+                plan_id=step.plan_id,
+                content=f"Requesting {formatted_agent} to perform action: {step.action}",
+                source="GroupChatManager",
+                step_id=step.id,
+            )
+        )
+        
+        track_event_if_configured(
+            f"Group Chat Manager - Requesting {agent_name} to perform the action and added into the cosmos",
+            {
+                "session_id": session_id,
+                "user_id": self._user_id,
+                "plan_id": step.plan_id,
+                "content": f"Requesting {agent_name} to perform action: {step.action}",
+                "source": "GroupChatManager",
+                "step_id": step.id,
+            },
+        )
+        
+        # Special handling for HumanAgent
+        if agent_name == "HumanAgent":
+            # Mark as completed since we have received the human feedback
+            step.status = StepStatus.completed
+            await self._memory_store.update_step(step)
+            
+            logging.info("Marking the step as complete - Since we have received the human feedback")
+            track_event_if_configured(
+                "Group Chat Manager - Steps completed - Received the human feedback and updated into the cosmos",
+                {
+                    "session_id": session_id,
+                    "user_id": self._user_id,
+                    "plan_id": step.plan_id,
+                    "content": "Marking the step as complete - Since we have received the human feedback",
+                    "source": agent_name,
+                    "step_id": step.id,
+                },
+            )
+            return f"Step {step.id} for HumanAgent marked as completed"
+        
+        # Check if agent is registered
+        if agent_name not in self._agent_instances:
+            logging.warning(f"Agent {agent_name} not found. Using GenericAgent instead.")
+            agent_name = "GenericAgent"
+            if agent_name not in self._agent_instances:
+                return f"No agent found to handle step {step.id}"
+        
+        # Create action request
+        action_request = ActionRequest(
+            step_id=step.id,
+            plan_id=step.plan_id,
+            session_id=session_id,
+            action=action_with_history
+        )
+        
+        # Send action request to the agent
+        agent = self._agent_instances[agent_name]
+        result = await agent.handle_action_request(action_request.json())
+        
+        return f"Step {step.id} execution started with {agent_name}: {result}"
+    
+    async def run_group_chat(self, user_input: str, plan_id: str = "", step_id: str = "") -> str:
+        """Run the AgentGroupChat with a given input.
+        
+        Args:
+            user_input: The user input to start the conversation
+            plan_id: Optional plan ID for context
+            step_id: Optional step ID for context
+            
+        Returns:
+            Result of the group chat
+        """
+        # Ensure the group chat is initialized
+        await self.initialize_group_chat()
+        
+        try:
+            # Run the group chat
+            chat_result = await self._agent_group_chat.invoke_async(user_input)
+            
+            # Process and store results
+            messages = chat_result.value
+            for msg in messages:
+                # Skip the initial user message
+                if msg.role == "user" and msg.content == user_input:
+                    continue
+                    
+                # Store agent messages in the memory
+                await self._memory_store.add_item(
+                    AgentMessage(
+                        session_id=self._session_id,
+                        user_id=self._user_id,
+                        plan_id=plan_id,
+                        content=msg.content,
+                        source=msg.name if hasattr(msg, "name") else msg.role,
+                        step_id=step_id,
+                    )
+                )
+            
+            # Return the final message from the chat
+            if messages:
+                return messages[-1].content
+            return "Group chat completed with no messages."
+            
+        except Exception as e:
+            logging.error(f"Error running group chat: {str(e)}")
+            return f"Error running group chat: {str(e)}"
+    
+    async def execute_next_step(self, session_id: str, plan_id: str) -> str:
+        """Execute the next step in the plan.
+        
+        Args:
+            session_id: The session identifier
+            plan_id: The plan identifier
+            
+        Returns:
+            Status message
+        """
+        # Get all steps for the plan
+        steps = await self._memory_store.get_steps_for_plan(plan_id, session_id)
+        
+        # Find the next step to execute (first approved or planned step)
+        next_step = None
+        for step in steps:
+            if step.status == StepStatus.approved or step.status == StepStatus.planned:
+                next_step = step
+                break
+        
+        if not next_step:
+            # All steps are completed, mark plan as completed
+            plan = await self._memory_store.get_plan(plan_id)
+            if plan:
+                plan.overall_status = PlanStatus.completed
+                await self._memory_store.update_plan(plan)
+            return "All steps completed. Plan execution finished."
+        
+        return await self._execute_step(session_id, next_step)
     
     async def _generate_conversation_history(self, steps: List[Step], current_step_id: str, plan: Any) -> str:
         """Generate conversation history for context.
