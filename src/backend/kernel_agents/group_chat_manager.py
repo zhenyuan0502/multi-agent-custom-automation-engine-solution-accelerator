@@ -41,7 +41,6 @@ class GroupChatManager:
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
-        config_path: Optional[str] = None,
         available_agents: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Initialize the Group Chat Manager.
@@ -58,7 +57,6 @@ class GroupChatManager:
         self._session_id = session_id
         self._user_id = user_id
         self._memory_store = memory_store
-        self._config_path = config_path
         
         # Store available agents
         self._agent_instances = available_agents or {}
