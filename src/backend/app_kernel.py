@@ -548,7 +548,8 @@ async def get_plans(
             )
             raise HTTPException(status_code=404, detail="Plan not found")
 
-        steps = await memory_store.get_steps_for_plan(plan.id, session_id)
+        # Use get_steps_by_plan to match the original implementation
+        steps = await memory_store.get_steps_by_plan(plan_id=plan.id)
         plan_with_steps = PlanWithSteps(**plan.model_dump(), steps=steps)
         plan_with_steps.update_step_counts()
         return [plan_with_steps]
@@ -556,7 +557,7 @@ async def get_plans(
     all_plans = await memory_store.get_all_plans()
     # Fetch steps for all plans concurrently
     steps_for_all_plans = await asyncio.gather(
-        *[memory_store.get_steps_for_plan(plan.id, plan.session_id) for plan in all_plans]
+        *[memory_store.get_steps_by_plan(plan_id=plan.id) for plan in all_plans]
     )
     # Create list of PlanWithSteps and update step counts
     list_of_plans_with_steps = []
