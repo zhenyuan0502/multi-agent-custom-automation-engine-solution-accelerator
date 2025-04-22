@@ -98,7 +98,7 @@ Check the [Azure Products by Region](https://azure.microsoft.com/en-us/explore/g
 
 ### Configurable Deployment Settings
 
-When you start the deployment, most parameters will have **default values**, but you can update the below settings by following the steps  [here](./docs/CustomizingAzdParameters.md):  
+When you start the deployment, most parameters will have **default values**, but you can update the below settings by following the steps  [here](./documentation/CustomizingAzdParameters.md):  
 
 | **Setting** | **Description** |  **Default value** |
 |------------|----------------|  ------------|
