@@ -54,6 +54,7 @@ class PlannerAgent(BaseAgent):
         config_path: Optional[str] = None,
         available_agents: List[str] = None,
         agent_tools_list: List[str] = None,
+        agent_instances: Optional[Dict[str, BaseAgent]] = None,
         client=None,
         definition=None,
     ) -> None:
@@ -70,6 +71,7 @@ class PlannerAgent(BaseAgent):
             config_path: Optional path to the configuration file
             available_agents: List of available agent names for creating steps
             agent_tools_list: List of available tools across all agents
+            agent_instances: Dictionary of agent instances available to the planner
             client: Optional client instance (passed to BaseAgent)
             definition: Optional definition instance (passed to BaseAgent)
         """
@@ -96,6 +98,7 @@ class PlannerAgent(BaseAgent):
                                                      "ProductAgent", "ProcurementAgent", 
                                                      "TechSupportAgent", "GenericAgent"]
         self._agent_tools_list = agent_tools_list or []
+        self._agent_instances = agent_instances or {}
         
         # Create the Azure AI Agent for planning operations
         # This will be initialized in async_init
@@ -138,6 +141,11 @@ class PlannerAgent(BaseAgent):
         
         # Generate a structured plan with steps
         plan, steps = await self._create_structured_plan(input_task)
+
+        print(f"Plan created: {plan}")
+
+        print(f"Steps created: {steps}")
+
         
         if steps:
             # Add a message about the created plan
@@ -280,25 +288,33 @@ class PlannerAgent(BaseAgent):
             if self._azure_ai_agent is None:
                 raise RuntimeError("Failed to initialize Azure AI Agent for planning")
                 
-            # Get response from the Azure AI Agent
-            # Based on the method signature, invoke takes only named arguments, not positional ones
+            # Log detailed information about the instruction being sent
             logging.info(f"Invoking PlannerAgent with instruction length: {len(instruction)}")
             
-            # Create kernel arguments
+            # Create kernel arguments - make sure we explicitly emphasize the task
             kernel_args = KernelArguments()
-            kernel_args["input"] = instruction
+            kernel_args["input"] = f"TASK: {input_task.description}\n\n{instruction}"
             
+            print(f"Kernel arguments: {kernel_args}")
+
             # Call invoke with proper keyword arguments
             response_content = ""
             
             # Use keyword arguments instead of positional arguments
-            # Based on the method signature, we need to pass 'arguments' and possibly 'kernel'
-            async_generator = self._azure_ai_agent.invoke(arguments=kernel_args)
+            # Set a lower temperature to ensure consistent results
+            async_generator = self._azure_ai_agent.invoke(
+                arguments=kernel_args,
+                settings={
+                    "temperature": 0.0
+                }
+            )
             
             # Collect the response from the async generator
             async for chunk in async_generator:
                 if chunk is not None:
                     response_content += str(chunk)
+            
+            print(f"Response content: {response_content}")
             
             # Debug the response
             logging.info(f"Response content length: {len(response_content)}")
@@ -358,6 +374,10 @@ class PlannerAgent(BaseAgent):
                 summary = parsed_result.summary_plan_and_steps
                 human_clarification_request = parsed_result.human_clarification_request
                 
+                # Log potential mismatches between task and plan for debugging
+                if "onboard" in input_task.description.lower() and "marketing" in initial_goal.lower():
+                    logging.warning(f"Potential mismatch: Task was about onboarding but plan goal mentions marketing: {initial_goal}")
+                    
                 # Log the steps and agent assignments for debugging
                 for i, step in enumerate(steps_data):
                     logging.info(f"Step {i+1} - Agent: {step.agent}, Action: {step.action}")
@@ -469,7 +489,7 @@ class PlannerAgent(BaseAgent):
             
             await self._memory_store.add_plan(error_plan)
             return error_plan, []
-            
+    
     async def _create_fallback_plan_from_text(self, input_task: InputTask, text_content: str) -> Tuple[Plan, List[Step]]:
         """Create a plan from unstructured text when JSON parsing fails.
         
@@ -574,7 +594,44 @@ class PlannerAgent(BaseAgent):
         agents_str = ", ".join(self._available_agents)
         
         # Create list of available tools
-        tools_str = "\n".join(self._agent_tools_list) if self._agent_tools_list else "Various specialized tools"
+        # If _agent_tools_list is empty but we have agent instances available elsewhere,
+        # we should retrieve tools directly from agent instances
+        tools_str = ""
+        if hasattr(self, '_agent_instances') and self._agent_instances:
+            # Extract tools from agent instances
+            agent_tools_sections = []
+            
+            # Process each agent to get their tools
+            for agent_name, agent in self._agent_instances.items():
+                if hasattr(agent, '_tools') and agent._tools:
+                    # Create a section header for this agent
+                    agent_tools_sections.append(f"### {agent_name} Tools ###")
+                    
+                    # Add each tool from this agent
+                    for tool in agent._tools:
+                        if hasattr(tool, 'name') and hasattr(tool, 'description'):
+                            tool_desc = f"Agent: {agent_name} - Function: {tool.name} - {tool.description}"
+                            agent_tools_sections.append(tool_desc)
+                    
+                    # Add a blank line after each agent's tools
+                    agent_tools_sections.append("")
+            
+            # Join all sections
+            if agent_tools_sections:
+                tools_str = "\n".join(agent_tools_sections)
+                # Log the tools for debugging
+                logging.debug(f"Generated tools list from agent instances with {len(agent_tools_sections)} entries")
+            else:
+                tools_str = "Various specialized tools (No tool details available from agent instances)"
+                logging.warning("No tools found in agent instances")
+        elif self._agent_tools_list:
+            # Fall back to the existing tools list if available
+            tools_str = "\n".join(self._agent_tools_list)
+            logging.debug(f"Using existing agent_tools_list with {len(self._agent_tools_list)} entries")
+        else:
+            # Default fallback
+            tools_str = "Various specialized tools"
+            logging.warning("No tools information available for planner instruction")
         
         # Build the instruction, avoiding backslashes in f-string expressions
         objective_part = f"Your objective is:\n{objective}" if objective else "When given an objective, analyze it and create a plan to accomplish it."

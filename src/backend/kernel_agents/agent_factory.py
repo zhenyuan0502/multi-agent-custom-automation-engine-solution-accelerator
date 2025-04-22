@@ -152,17 +152,23 @@ class AgentFactory:
         agent_type_str = cls._agent_type_strings.get(agent_type, agent_type.value.lower())
         tools = await cls._load_tools_for_agent(kernel, agent_type_str)
         
-        # Build the agent definition (functions schema) if tools exist
+        # Build the agent definition (functions schema)
         definition = None
         client = None
+        
         try:
             client = config.get_ai_project_client()
         except Exception as client_exc:
             logger.error(f"Error creating AIProjectClient: {client_exc}")
-            raise
+            if agent_type == AgentType.GROUP_CHAT_MANAGER:
+                logger.info(f"Continuing with GroupChatManager creation despite AIProjectClient error")
+            else:
+                raise
+                
         try:
-            if tools:
-                # Create the agent definition using the AIProjectClient (project-based pattern)
+            # Create the agent definition using the AIProjectClient (project-based pattern)
+            # For GroupChatManager, create a definition with minimal configuration
+            if client is not None:
                 definition = await client.agents.create_agent(
                     model=config.AZURE_OPENAI_DEPLOYMENT_NAME,
                     name=agent_type_str,
@@ -170,11 +176,13 @@ class AgentFactory:
                     temperature=temperature,
                     response_format=None  # Add response_format if required
                 )
+                logger.info(f"Successfully created agent definition for {agent_type_str}")
         except Exception as agent_exc:
-            logger.error(f"Error creating agent definition with AIProjectClient: {agent_exc}")
-            raise
-        if definition is None:
-            raise RuntimeError("Failed to create agent definition from Azure AI Project. Check your Azure configuration, permissions, and network connectivity.")
+            logger.error(f"Error creating agent definition with AIProjectClient for {agent_type_str}: {agent_exc}")
+            if agent_type == AgentType.GROUP_CHAT_MANAGER:
+                logger.info(f"Continuing with GroupChatManager creation despite definition error")
+            else:
+                raise
         
         # Create the agent instance using the project-based pattern
         try:
@@ -215,7 +223,7 @@ class AgentFactory:
         cls._agent_cache[session_id][agent_type] = agent
         
         return agent
-        
+
     @classmethod
     async def create_azure_ai_agent(
         cls,
@@ -272,7 +280,7 @@ class AgentFactory:
         """Load tools for an agent from the tools directory.
         
         This tries to load tool configurations from JSON files. If that fails,
-        it creates a simple helper function as a fallback.
+        it returns an empty list for agents that don't need tools.
         
         Args:
             kernel: The semantic kernel instance
@@ -286,9 +294,20 @@ class AgentFactory:
             tools = BaseAgent.get_tools_from_config(kernel, agent_type)
             logger.info(f"Successfully loaded {len(tools)} tools for {agent_type}")
             return tools
+        except FileNotFoundError:
+            # No tool configuration file found - this is expected for some agents
+            logger.info(f"No tools defined for agent type '{agent_type}'. Returning empty list.")
+            return []
         except Exception as e:
-            logger.warning(f"Failed to load tools for {agent_type}, using fallback: {e}")
+            logger.warning(f"Error loading tools for {agent_type}: {e}")
             
+            # Return an empty list for agents without tools rather than attempting a fallback
+            # Special handling for group_chat_manager which typically doesn't need tools
+            if "group_chat_manager" in agent_type:
+                logger.info(f"No tools needed for {agent_type}. Returning empty list.")
+                return []
+                
+            # For other agent types, try to create a simple fallback tool
             try:
                 # Use PromptTemplateConfig to create a simple tool
                 from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
@@ -319,7 +338,7 @@ Provide a helpful response."""
                 return [function]
             except Exception as fallback_error:
                 logger.error(f"Failed to create fallback tool for {agent_type}: {fallback_error}")
-                # Return an empty list if everything fails
+                # Return an empty list if everything fails - the agent can still function without tools
                 return []
 
     @classmethod
@@ -343,16 +362,56 @@ Provide a helpful response."""
         if session_id in cls._agent_cache and len(cls._agent_cache[session_id]) == len(cls._agent_classes):
             return cls._agent_cache[session_id]
             
-        # Create each agent type
+        # Create each agent type in two phases
+        # First, create all agents except PlannerAgent and GroupChatManager
         agents = {}
-        for agent_type in cls._agent_classes.keys():
+        planner_agent_type = AgentType.PLANNER
+        group_chat_manager_type = AgentType.GROUP_CHAT_MANAGER
+        
+        # Initialize cache for this session if it doesn't exist
+        if session_id not in cls._agent_cache:
+            cls._agent_cache[session_id] = {}
+        
+        # Phase 1: Create all agents except planner and group chat manager
+        for agent_type in [at for at in cls._agent_classes.keys() 
+                           if at != planner_agent_type and at != group_chat_manager_type]:
             agents[agent_type] = await cls.create_agent(
                 agent_type=agent_type,
                 session_id=session_id,
                 user_id=user_id,
                 temperature=temperature
             )
-            
+        
+        # Create agent name to instance mapping for the planner
+        agent_instances = {}
+        for agent_type, agent in agents.items():
+            agent_name = cls._agent_type_strings.get(agent_type).replace("_", "") + "Agent"
+            agent_name = agent_name[0].upper() + agent_name[1:]  # Capitalize first letter
+            agent_instances[agent_name] = agent
+        
+        # Log the agent instances for debugging
+        logger.debug(f"Created {len(agent_instances)} agent instances for planner: {', '.join(agent_instances.keys())}")
+        
+        # Phase 2: Create the planner agent with agent_instances
+        planner_agent = await cls.create_agent(
+            agent_type=planner_agent_type,
+            session_id=session_id,
+            user_id=user_id,
+            temperature=temperature,
+            agent_instances=agent_instances  # Pass agent instances to the planner
+        )
+        agents[planner_agent_type] = planner_agent
+        
+        # Phase 3: Create group chat manager with all agents including the planner
+        group_chat_manager = await cls.create_agent(
+            agent_type=group_chat_manager_type,
+            session_id=session_id,
+            user_id=user_id,
+            temperature=temperature,
+            available_agents=agent_instances  # Pass all agents to group chat manager
+        )
+        agents[group_chat_manager_type] = group_chat_manager
+        
         return agents
         
     @classmethod
