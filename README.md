@@ -85,10 +85,6 @@ Check the [Azure Products by Region](https://azure.microsoft.com/en-us/explore/g
 - Azure OpenAI Service
 - Azure AI Search
 - [Azure Semantic Search](./docs/AzureSemanticSearchRegion.md)
-- Current Azure CLI installed
-- You can update to the latest version using ```az upgrade```
-- Azure account with appropriate permissions
-- Docker installed
 
 ### ⚠️ Important: Check Azure OpenAI Quota Availability  
 
@@ -100,28 +96,24 @@ Check the [Azure Products by Region](https://azure.microsoft.com/en-us/explore/g
 
 <!-- [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fmicrosoft%2FMulti-Agent-Custom-Automation-Engine-Solution-Accelerator%2Frefs%2Fheads%2Fmain%2Fdeploy%2Fmacae-continer-oc.json) -->
 
-When Deployment is complete, follow steps in [Set Up Authentication in Azure App Service](./documentation/azure_app_service_auth_setup.md) to add app authentication to your web app running on Azure App Service
-
 ### Configurable Deployment Settings
 
 When you start the deployment, most parameters will have **default values**, but you can update the below settings by following the steps  [here](./docs/CustomizingAzdParameters.md):  
 
 | **Setting** | **Description** |  **Default value** |
 |------------|----------------|  ------------|
-| **Environment Name** | A **3-20 character alphanumeric value** used to generate a unique ID to prefix the resources. |  byctemplate |
-| **Secondary Location** | A **less busy** region for **CosmosDB**, useful in case of availability constraints. |  eastus2 |
+| **Environment Name** | A **3-20 character alphanumeric value** used to generate a unique ID to prefix the resources. |  macaetemplate |
+| **Cosmos Location** | A **less busy** region for **CosmosDB**, useful in case of availability constraints. |  eastus2 |
 | **Deployment Type** | Select from a drop-down list. |  Global Standard |
-| **GPT Model** | Choose from **gpt-4, gpt-4o** | gpt-4o |  
-| **GPT Model Deployment Capacity** | Configure capacity for **GPT models**. | 30k |
+| **GPT Model** | Choose from **gpt-4o** | gpt-4o |  
+| **GPT Model Deployment Capacity** | Configure capacity for **GPT models**. | 50k |
 
 
 ### [Optional] Quota Recommendations  
-By default, the **Gpt-4o model capacity** in deployment is set to **30k tokens**, so we recommend
-> **For Global Standard | GPT-4o - the capacity to at least 150k tokens post-deployment for optimal performance.**
+By default, the **Gpt-4o model capacity** in deployment is set to **50k tokens**, so we recommend
+> **For Global Standard | GPT-4o - the capacity to at least 50k tokens for optimal performance.**
 
-> **For Standard | GPT-4 - ensure a minimum of 30k–40k tokens for best results.**
-
-To adjust quota settings, follow these [steps](./documentation/AzureGPTQuotaSettings.md)  
+To adjust quota settings if required, follow these [steps](./documentation/AzureGPTQuotaSettings.md)  
 
 ### Deployment Options
 Pick from the options below to see step-by-step instructions for: GitHub Codespaces, VS Code Dev Containers, Local Environments, and Bicep deployments.
