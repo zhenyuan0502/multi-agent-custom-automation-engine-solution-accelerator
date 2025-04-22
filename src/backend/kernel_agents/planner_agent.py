@@ -33,7 +33,7 @@ class StructuredOutputPlan(BaseModel):
     summary_plan_and_steps: str = Field(description="Brief summary of the plan and steps")
     human_clarification_request: Optional[str] = Field(None, description="Any additional information needed from the human")
 
-class PlannerAgent:
+class PlannerAgent(BaseAgent):
     """Planner agent implementation using Semantic Kernel.
     
     This agent creates and manages plans based on user tasks, breaking them down into steps
@@ -46,8 +46,14 @@ class PlannerAgent:
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
+        tools: Optional[List[KernelFunction]] = None,
+        system_message: Optional[str] = None,
+        agent_name: str = "PlannerAgent",
+        config_path: Optional[str] = None,
         available_agents: List[str] = None,
-        agent_tools_list: List[str] = None
+        agent_tools_list: List[str] = None,
+        client=None,
+        definition=None,
     ) -> None:
         """Initialize the Planner Agent.
         
@@ -56,33 +62,47 @@ class PlannerAgent:
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
-            config_path: Optional path to the Planner tools configuration file
+            tools: Optional list of tools for this agent
+            system_message: Optional system message for the agent
+            agent_name: Optional name for the agent (defaults to "PlannerAgent")
+            config_path: Optional path to the configuration file
             available_agents: List of available agent names for creating steps
             agent_tools_list: List of available tools across all agents
+            client: Optional client instance (passed to BaseAgent)
+            definition: Optional definition instance (passed to BaseAgent)
         """
-        self._kernel = kernel
-        self._session_id = session_id
-        self._user_id = user_id
-        self._memory_store = memory_store
-        self._config_path = config_path
+        # Default system message if not provided
+        if not system_message:
+            system_message = "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
         
-        # Store the available agents and their tools
+        # Initialize the base agent
+        super().__init__(
+            agent_name=agent_name,
+            kernel=kernel,
+            session_id=session_id,
+            user_id=user_id,
+            memory_store=memory_store,
+            tools=tools,
+            system_message=system_message,
+            agent_type="planner",  # Use planner_tools.json if available
+            client=client,
+            definition=definition
+        )
+        
+        # Store additional planner-specific attributes
         self._available_agents = available_agents or ["HumanAgent", "HrAgent", "MarketingAgent", 
-                                                    "ProductAgent", "ProcurementAgent", 
-                                                    "TechSupportAgent", "GenericAgent"]
+                                                     "ProductAgent", "ProcurementAgent", 
+                                                     "TechSupportAgent", "GenericAgent"]
         self._agent_tools_list = agent_tools_list or []
         
-
-        self._system_message = "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
-        
-        
-        # Create the agent
-        self._agent = KernelFunction.from_prompt(
+        # Create the planning function
+        self._planner_function = KernelFunction.from_prompt(
             function_name="PlannerFunction",
             plugin_name="planner_plugin",
             prompt_template=self._system_message,
             description="Creates and manages execution plans"
         )
+        self._kernel.add_function("planner_plugin", self._planner_function)
         
     async def handle_input_task(self, kernel_arguments: KernelArguments) -> str:
         """Handle the initial input task from the user.
@@ -231,7 +251,7 @@ class PlannerAgent:
             
             # Ask the LLM to generate a structured plan
             args = KernelArguments(input=instruction)
-            result = await self._agent.invoke_async(kernel_arguments=args)
+            result = await self._planner_function.invoke_async(kernel_arguments=args)
             response_content = result.value.strip()
             
             # Parse the JSON response using the structured output model

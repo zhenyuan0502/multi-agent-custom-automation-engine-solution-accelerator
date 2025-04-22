@@ -127,6 +127,132 @@ class BaseAgent(AzureAIAgent):
         # Use agent name as plugin for handler
         self._kernel.add_function(self._agent_name, kernel_func)
 
+    async def handle_action_request(self, action_request_json: str) -> str:
+        """Handle an action request from another agent or the system.
+        
+        Args:
+            action_request_json: The action request as a JSON string
+            
+        Returns:
+            A JSON string containing the action response
+        """
+        # Parse the action request
+        action_request_dict = json.loads(action_request_json)
+        action_request = ActionRequest(**action_request_dict)
+        
+        # Get the step from memory
+        step: Step = await self._memory_store.get_step(
+            action_request.step_id, action_request.session_id
+        )
+        
+        if not step:
+            # Create error response if step not found
+            response = ActionResponse(
+                step_id=action_request.step_id,
+                status=StepStatus.failed,
+                message="Step not found in memory.",
+            )
+            return response.json()
+        
+        # Add messages to chat history for context
+        # This gives the agent visibility of the conversation history
+        self._chat_history.extend([
+            {"role": "assistant", "content": action_request.action},
+            {"role": "user", "content": f"{step.human_feedback}. Now make the function call"}
+        ])
+        
+        try:
+            # Use the agent to process the action
+            chat_history = self._chat_history.copy()
+            
+            # Call the agent to handle the action
+            agent_response = await self._agent.invoke(self._kernel, f"{action_request.action}\n\nPlease perform this action")
+            result = str(agent_response)
+            
+            # Store agent message in cosmos memory
+            await self._memory_store.add_item(
+                AgentMessage(
+                    session_id=action_request.session_id,
+                    user_id=self._user_id,
+                    plan_id=action_request.plan_id,
+                    content=f"{result}",
+                    source=self._agent_name,
+                    step_id=action_request.step_id,
+                )
+            )
+
+            # Track telemetry
+            track_event_if_configured(
+                "Base agent - Added into the cosmos",
+                {
+                    "session_id": action_request.session_id,
+                    "user_id": self._user_id,
+                    "plan_id": action_request.plan_id,
+                    "content": f"{result}",
+                    "source": self._agent_name,
+                    "step_id": action_request.step_id,
+                },
+            )
+
+        except Exception as e:
+            logging.exception(f"Error during agent execution: {e}")
+            
+            # Track error in telemetry
+            track_event_if_configured(
+                "Base agent - Error during agent execution, captured into the cosmos",
+                {
+                    "session_id": action_request.session_id,
+                    "user_id": self._user_id,
+                    "plan_id": action_request.plan_id,
+                    "content": f"{e}",
+                    "source": self._agent_name,
+                    "step_id": action_request.step_id,
+                },
+            )
+            
+            # Return an error response
+            response = ActionResponse(
+                step_id=action_request.step_id,
+                plan_id=action_request.plan_id,
+                session_id=action_request.session_id,
+                result=f"Error: {str(e)}",
+                status=StepStatus.failed,
+            )
+            return response.json()
+            
+        logging.info(f"Task completed: {result}")
+
+        # Update step status
+        step.status = StepStatus.completed
+        step.agent_reply = result
+        await self._memory_store.update_step(step)
+
+        # Track step completion in telemetry
+        track_event_if_configured(
+            "Base agent - Updated step and updated into the cosmos",
+            {
+                "status": StepStatus.completed,
+                "session_id": action_request.session_id,
+                "agent_reply": f"{result}",
+                "user_id": self._user_id,
+                "plan_id": action_request.plan_id,
+                "content": f"{result}",
+                "source": self._agent_name,
+                "step_id": action_request.step_id,
+            },
+        )
+
+        # Create and return action response
+        response = ActionResponse(
+            step_id=step.id,
+            plan_id=step.plan_id,
+            session_id=action_request.session_id,
+            result=result,
+            status=StepStatus.completed,
+        )
+        
+        return response.json()
+
     async def invoke_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
         """Invoke a specific tool by name with the provided arguments.
         
@@ -275,6 +401,11 @@ class BaseAgent(AzureAIAgent):
         kernel_functions = []
         plugin_name = f"{agent_type}_plugin"
         
+        # Early return if no tools defined - prevent empty iteration
+        if not config.get("tools"):
+            logging.info(f"No tools defined for agent type '{agent_type}'. Returning empty list.")
+            return kernel_functions
+        
         for tool in config.get("tools", []):
             try:
                 function_name = tool["name"]
@@ -301,8 +432,22 @@ class BaseAgent(AzureAIAgent):
                 # Register the function with the kernel
                 kernel.add_function(plugin_name, kernel_func)
                 kernel_functions.append(kernel_func)
-                #logging.info(f"Successfully created dynamic tool '{function_name}' for {agent_type}")
+                logging.debug(f"Successfully created dynamic tool '{function_name}' for {agent_type}")
             except Exception as e:
                 logging.error(f"Failed to create tool '{tool.get('name', 'unknown')}': {str(e)}")
                 
+        # Log the total number of tools created
+        if kernel_functions:
+            logging.info(f"Created {len(kernel_functions)} tools for agent type '{agent_type}'")
+        else:
+            logging.info(f"No tools were successfully created for agent type '{agent_type}'")
+                
         return kernel_functions
+
+    def save_state(self) -> Mapping[str, Any]:
+        """Save the state of this agent."""
+        return {"memory": self._memory_store.save_state()}
+
+    def load_state(self, state: Mapping[str, Any]) -> None:
+        """Load the state of this agent."""
+        self._memory_store.load_state(state["memory"])

@@ -41,6 +41,8 @@ class AgentFactory:
         AgentType.TECH_SUPPORT: TechSupportAgent,
         AgentType.GENERIC: GenericAgent,
         AgentType.HUMAN: HumanAgent,
+        AgentType.PLANNER: PlannerAgent,  # Add PlannerAgent
+        AgentType.GROUP_CHAT_MANAGER: GroupChatManager,  # Add GroupChatManager
     }
 
     # Mapping of agent types to their string identifiers (for automatic tool loading)
@@ -52,6 +54,8 @@ class AgentFactory:
         AgentType.TECH_SUPPORT: "tech_support",
         AgentType.GENERIC: "generic",
         AgentType.HUMAN: "human",
+        AgentType.PLANNER: "planner",  # Add planner
+        AgentType.GROUP_CHAT_MANAGER: "group_chat_manager",  # Add group_chat_manager
     }
 
     # System messages for each agent type
@@ -63,6 +67,8 @@ class AgentFactory:
         AgentType.TECH_SUPPORT: "You are a technical support expert helping with technical issues.",
         AgentType.GENERIC: "You are a helpful assistant ready to help with various tasks.",
         AgentType.HUMAN: "You are representing a human user in the conversation.",
+        AgentType.PLANNER: "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents.",
+        AgentType.GROUP_CHAT_MANAGER: "You are a Group Chat Manager coordinating conversations between different agents to execute plans efficiently.",
     }
 
     # Cache of agent instances by session_id and agent_type
