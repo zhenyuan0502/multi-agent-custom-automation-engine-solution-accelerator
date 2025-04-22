@@ -350,6 +350,102 @@ class PlannerAgentIntegrationTest(unittest.TestCase):
         print(f"\nCreated technical webinar plan with {len(steps)} steps")
         print(f"Steps assigned to: {', '.join(set(step.agent for step in steps))}")
 
+    async def test_hr_agent_selection(self):
+        """Test that the planner correctly assigns employee onboarding tasks to the HR agent."""
+        # Initialize components
+        await self.initialize_planner_agent()
+        
+        # Create an onboarding task
+        input_task = InputTask(
+            session_id=self.session_id,
+            user_id=self.user_id,
+            description="Onboard a new employee, Jessica Smith."
+        )
+        
+        print("\n\n==== TESTING HR AGENT SELECTION FOR ONBOARDING ====")
+        print(f"Task: '{input_task.description}'")
+        
+        # Call handle_input_task
+        args = KernelArguments(input_task_json=input_task.json())
+        result = await self.planner_agent.handle_input_task(args)
+        
+        # Check that result contains a success message
+        self.assertIn("created successfully", result)
+        
+        # Verify plan was created in memory store
+        plan = await self.memory_store.get_plan_by_session(self.session_id)
+        self.assertIsNotNone(plan)
+        
+        # Verify steps were created
+        steps = await self.memory_store.get_steps_for_plan(plan.id, self.session_id)
+        self.assertGreater(len(steps), 0)
+        
+        # Log plan details
+        print(f"\n📋 Created onboarding plan with ID: {plan.id}")
+        print(f"🎯 Goal: {plan.initial_goal}")
+        print(f"📝 Summary: {plan.summary}")
+        
+        print("\n📝 Steps:")
+        for i, step in enumerate(steps):
+            print(f"  {i+1}. 👤 Agent: {step.agent}, 🔧 Action: {step.action}")
+        
+        # Count agents used in the plan
+        agent_counts = {}
+        for step in steps:
+            agent_counts[step.agent] = agent_counts.get(step.agent, 0) + 1
+            
+        print("\n📊 Agent Distribution:")
+        for agent, count in agent_counts.items():
+            print(f"  {agent}: {count} step(s)")
+        
+        # The critical test: verify that at least one step is assigned to HrAgent
+        hr_steps = [step for step in steps if step.agent == "HrAgent"]
+        has_hr_steps = len(hr_steps) > 0
+        self.assertTrue(has_hr_steps, "No steps assigned to HrAgent for an onboarding task")
+        
+        if has_hr_steps:
+            print("\n✅ TEST PASSED: HrAgent is used for onboarding task")
+        else:
+            print("\n❌ TEST FAILED: HrAgent is not used for onboarding task")
+        
+        # Verify that no steps are incorrectly assigned to MarketingAgent
+        marketing_steps = [step for step in steps if step.agent == "MarketingAgent"]
+        no_marketing_steps = len(marketing_steps) == 0
+        self.assertEqual(len(marketing_steps), 0, 
+                         f"Found {len(marketing_steps)} steps incorrectly assigned to MarketingAgent for an onboarding task")
+        
+        if no_marketing_steps:
+            print("✅ TEST PASSED: No MarketingAgent steps for onboarding task")
+        else:
+            print(f"❌ TEST FAILED: Found {len(marketing_steps)} steps incorrectly assigned to MarketingAgent")
+            
+        # Verify that the first step or a step containing "onboard" is assigned to HrAgent
+        first_agent = steps[0].agent if steps else None
+        onboarding_steps = [step for step in steps if "onboard" in step.action.lower()]
+        
+        if onboarding_steps:
+            onboard_correct = onboarding_steps[0].agent == "HrAgent"
+            self.assertEqual(onboarding_steps[0].agent, "HrAgent", 
+                            "The step containing 'onboard' was not assigned to HrAgent")
+            if onboard_correct:
+                print("✅ TEST PASSED: Steps containing 'onboard' are assigned to HrAgent")
+            else:
+                print(f"❌ TEST FAILED: Step containing 'onboard' assigned to {onboarding_steps[0].agent}, not HrAgent")
+            
+        # If no specific "onboard" step but we have steps, the first should likely be HrAgent
+        elif steps and "hr" not in first_agent.lower():
+            first_step_correct = first_agent == "HrAgent"
+            self.assertEqual(first_agent, "HrAgent", 
+                            f"The first step was assigned to {first_agent}, not HrAgent")
+            if first_step_correct:
+                print("✅ TEST PASSED: First step is assigned to HrAgent")
+            else:
+                print(f"❌ TEST FAILED: First step assigned to {first_agent}, not HrAgent")
+                
+        print("\n==== END HR AGENT SELECTION TEST ====\n")
+            
+        return plan, steps
+
     async def run_all_tests(self):
         """Run all tests in sequence."""
         # Call setUp explicitly to ensure environment is properly initialized
@@ -371,6 +467,10 @@ class PlannerAgentIntegrationTest(unittest.TestCase):
             # Test 4: Test the structured plan creation directly (with a different task)
             print("\n===== Testing _create_structured_plan directly =====")
             await self.test_create_structured_plan()
+            
+            # Test 5: Verify HR agent selection for onboarding tasks
+            print("\n===== Testing HR agent selection =====")
+            await self.test_hr_agent_selection()
             
             print("\nAll tests completed successfully!")
             

@@ -11,9 +11,9 @@ import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
-# Import agent factory and config
+# Import agent factory and the new AppConfig
 from kernel_agents.agent_factory import AgentFactory
-from config_kernel import Config
+from app_config import config
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.agent_types import AgentType
 
@@ -42,8 +42,8 @@ async def initialize_runtime_and_context(
     if session_id is None:
         session_id = str(uuid.uuid4())
     
-    # Create a kernel and memory store
-    kernel = Config.CreateKernel()
+    # Create a kernel and memory store using the AppConfig instance
+    kernel = config.create_kernel()
     memory_store = CosmosMemoryContext(session_id, user_id)
     
     return kernel, memory_store
@@ -81,8 +81,8 @@ async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
             AgentType.TECH_SUPPORT: "TechSupportAgent",
             AgentType.GENERIC: "GenericAgent",
             AgentType.HUMAN: "HumanAgent",
-            AgentType.PLANNER: "PlannerAgent", 
-            AgentType.GROUP_CHAT_MANAGER: "GroupChatManager",
+            AgentType.PLANNER: "PlannerAgent",  # Add PlannerAgent
+            AgentType.GROUP_CHAT_MANAGER: "GroupChatManager",  # Add GroupChatManager
         }
         
         # Convert to the agent name dictionary format used by the rest of the app

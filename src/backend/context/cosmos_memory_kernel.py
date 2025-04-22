@@ -3,17 +3,29 @@
 import asyncio
 import logging
 import uuid
+import json
+import datetime
 from typing import Any, Dict, List, Optional, Type, Tuple
 import numpy as np
 
 from azure.cosmos.partition_key import PartitionKey
+from azure.cosmos.aio import CosmosClient
+from azure.identity import DefaultAzureCredential
 from semantic_kernel.memory.memory_record import MemoryRecord
 from semantic_kernel.memory.memory_store_base import MemoryStoreBase
 from semantic_kernel.contents import ChatMessageContent, ChatHistory, AuthorRole
 
-from config_kernel import Config
+# Import the AppConfig instance
+from app_config import config
 from models.messages_kernel import BaseDataModel, Plan, Session, Step, AgentMessage
 
+# Add custom JSON encoder class for datetime objects
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder for handling datetime objects."""
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 class CosmosMemoryContext(MemoryStoreBase):
     """A buffered chat completion context that saves messages and data models to Cosmos DB."""
@@ -30,13 +42,21 @@ class CosmosMemoryContext(MemoryStoreBase):
         self,
         session_id: str,
         user_id: str,
+        cosmos_container: str = None,
+        cosmos_endpoint: str = None, 
+        cosmos_database: str = None,
         buffer_size: int = 100,
         initial_messages: Optional[List[ChatMessageContent]] = None,
     ) -> None:
         self._buffer_size = buffer_size
         self._messages = initial_messages or []
-        self._cosmos_container = Config.COSMOSDB_CONTAINER
-        self._database = Config.GetCosmosDatabaseClient()
+        
+        # Use values from AppConfig instance if not provided
+        self._cosmos_container = cosmos_container or config.COSMOSDB_CONTAINER
+        self._cosmos_endpoint = cosmos_endpoint or config.COSMOSDB_ENDPOINT
+        self._cosmos_database = cosmos_database or config.COSMOSDB_DATABASE
+        
+        self._database = None
         self._container = None
         self.session_id = session_id
         self.user_id = user_id
@@ -47,8 +67,14 @@ class CosmosMemoryContext(MemoryStoreBase):
     async def initialize(self):
         """Initialize the memory context using CosmosDB."""
         try:
-            if self._database is None:
-                raise ValueError("CosmosDB client is not available. Please check CosmosDB configuration.")
+            if not self._database:
+                # Create Cosmos client
+                cosmos_client = CosmosClient(
+                    self._cosmos_endpoint, 
+                    credential=DefaultAzureCredential()
+                )
+                self._database = cosmos_client.get_database_client(self._cosmos_database)
+                
             # Set up CosmosDB container
             self._container = await self._database.create_container_if_not_exists(
                 id=self._cosmos_container,
@@ -65,16 +91,36 @@ class CosmosMemoryContext(MemoryStoreBase):
     # Helper method for awaiting initialization
     async def ensure_initialized(self):
         """Ensure that the container is initialized."""
-        await self._initialized.wait()
+        if not self._initialized.is_set():
+            # If the initialization hasn't been done, do it now
+            await self.initialize()
+            
+        # If after initialization the container is still None, that means initialization failed
         if self._container is None:
-            raise RuntimeError("CosmosDB container is not available. Initialization failed.")
+            # Re-attempt initialization once in case the previous attempt failed
+            try:
+                await self.initialize()
+            except Exception as e:
+                logging.error(f"Re-initialization attempt failed: {e}")
+                
+            # If still not initialized, raise error
+            if self._container is None:
+                raise RuntimeError("CosmosDB container is not available. Initialization failed.")
 
     async def add_item(self, item: BaseDataModel) -> None:
         """Add a data model item to Cosmos DB."""
         await self.ensure_initialized()
 
         try:
+            # Convert the model to a dict
             document = item.model_dump()
+            
+            # Handle datetime objects by converting them to ISO format strings
+            for key, value in list(document.items()):
+                if isinstance(value, datetime.datetime):
+                    document[key] = value.isoformat()
+            
+            # Now create the item with the serialized datetime values
             await self._container.create_item(body=document)
             logging.info(f"Item added to Cosmos DB - {document['id']}")
         except Exception as e:
@@ -86,7 +132,15 @@ class CosmosMemoryContext(MemoryStoreBase):
         await self.ensure_initialized()
 
         try:
+            # Convert the model to a dict
             document = item.model_dump()
+            
+            # Handle datetime objects by converting them to ISO format strings
+            for key, value in list(document.items()):
+                if isinstance(value, datetime.datetime):
+                    document[key] = value.isoformat()
+            
+            # Now upsert the item with the serialized datetime values
             await self._container.upsert_item(body=document)
         except Exception as e:
             logging.exception(f"Failed to update item in Cosmos DB: {e}")
@@ -170,8 +224,17 @@ class CosmosMemoryContext(MemoryStoreBase):
         return plans[0] if plans else None
 
     async def get_plan(self, plan_id: str) -> Optional[Plan]:
+        """Retrieve a plan by its ID.
+        
+        Args:
+            plan_id: The ID of the plan to retrieve
+            
+        Returns:
+            The Plan object or None if not found
+        """
+        # Use the session_id as the partition key since that's how we're partitioning our data
         return await self.get_item_by_id(
-            plan_id, partition_key=plan_id, model_class=Plan
+            plan_id, partition_key=self.session_id, model_class=Plan
         )
 
     async def get_all_plans(self) -> List[Plan]:

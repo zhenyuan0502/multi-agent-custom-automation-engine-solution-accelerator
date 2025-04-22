@@ -3,6 +3,8 @@ import asyncio
 import logging
 import os
 import uuid
+import re
+import json
 from typing import List, Dict, Optional, Any
 
 # FastAPI imports
@@ -85,52 +87,9 @@ logging.info("Added health check middleware")
 async def input_task_endpoint(input_task: InputTask, request: Request):
     """
     Receive the initial input task from the user.
-
-    ---
-    tags:
-      - Input Task
-    parameters:
-      - name: user_principal_id
-        in: header
-        type: string
-        required: true
-        description: User ID extracted from the authentication header
-      - name: body
-        in: body
-        required: true
-        schema:
-          type: object
-          properties:
-            session_id:
-              type: string
-              description: Optional session ID, generated if not provided
-            description:
-              type: string
-              description: The task description
-            user_id:
-              type: string
-              description: The user ID associated with the task
-    responses:
-      200:
-        description: Task created successfully
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-            session_id:
-              type: string
-            plan_id:
-              type: string
-            description:
-              type: string
-            user_id:
-              type: string
-      400:
-        description: Missing or invalid user information
     """
-
-    if not rai_success(input_task.description):
+    # Fix 1: Properly await the async rai_success function
+    if not await rai_success(input_task.description):
         print("RAI failed")
 
         track_event_if_configured(
@@ -150,67 +109,91 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
 
     if not user_id:
         track_event_if_configured("UserIdNotFound", {"status_code": 400, "detail": "no user"})
-
         raise HTTPException(status_code=400, detail="no user")
+        
+    # Generate session ID if not provided
     if not input_task.session_id:
         input_task.session_id = str(uuid.uuid4())
-
-    # Get the agents for this session
-    agents = await get_agents(input_task.session_id, user_id)
     
-    # Send the task to the planner agent
-    planner_agent = agents["PlannerAgent"]
+    # Fix 2: Don't try to set user_id on InputTask directly since it doesn't have that field
+    # Instead, include it in the JSON we'll pass to the planner
     
-    # Convert input task to JSON for the kernel function
-    input_task_json = input_task.json()
-    
-    # Use the planner to handle the task
-    result = await planner_agent.handle_input_task(
-        KernelArguments(input_task_json=input_task_json)
-    )
-    
-    # Extract plan ID from the result
-    # This is a simplified approach - in a real system, 
-    # we would properly parse the result to get the plan ID
-    memory_store = planner_agent._memory_store
-    plan = await memory_store.get_plan_by_session(input_task.session_id)
-    
-    if not plan or not plan.id:
-        track_event_if_configured(
-            "PlanCreationFailed", 
-            {
-                "session_id": input_task.session_id,
-                "description": input_task.description,
-            }
+    try:
+        # Create just the planner agent instead of all agents
+        kernel, memory_store = await initialize_runtime_and_context(input_task.session_id, user_id)
+        planner_agent = await AgentFactory.create_agent(
+            agent_type=AgentType.PLANNER, 
+            session_id=input_task.session_id, 
+            user_id=user_id
         )
+        
+        # Convert input task to JSON for the kernel function, add user_id here
+        input_task_data = input_task.model_dump()
+        input_task_data["user_id"] = user_id
+        input_task_json = json.dumps(input_task_data)
+        
+        # Use the planner to handle the task
+        result = await planner_agent.handle_input_task(
+            KernelArguments(input_task_json=input_task_json)
+        )
+        
+        # Get plan from memory store
+        plan = await memory_store.get_plan_by_session(input_task.session_id)
+        
+        if not plan or not plan.id:
+            # If plan not found by session, try to extract plan ID from result
+            plan_id_match = re.search(r"Plan '([^']+)'", result)
+            
+            if plan_id_match:
+                plan_id = plan_id_match.group(1)
+                plan = await memory_store.get_plan(plan_id)
+            
+            # If still no plan found, handle the failure
+            if not plan or not plan.id:
+                track_event_if_configured(
+                    "PlanCreationFailed", 
+                    {
+                        "session_id": input_task.session_id,
+                        "description": input_task.description,
+                    }
+                )
+                raise HTTPException(status_code=400, detail="Error: Failed to create plan")
+        
+        # Log custom event for successful input task processing
+        track_event_if_configured(
+            "InputTaskProcessed",
+            {
+                "status": f"Plan created with ID: {plan.id}",
+                "session_id": input_task.session_id,
+                "plan_id": plan.id,
+                "description": input_task.description,
+            },
+        )
+
         return {
-            "status": "Error: Failed to create plan",
-            "session_id": input_task.session_id,
-            "plan_id": "",
-            "description": input_task.description,
-        }
-    
-    # Log custom event for successful input task processing
-    track_event_if_configured(
-        "InputTaskProcessed",
-        {
             "status": f"Plan created with ID: {plan.id}",
             "session_id": input_task.session_id,
             "plan_id": plan.id,
             "description": input_task.description,
-        },
-    )
+        }
+        
+    except Exception as e:
+        logging.exception(f"Error handling input task: {e}")
+        track_event_if_configured(
+            "InputTaskError", 
+            {
+                "session_id": input_task.session_id,
+                "description": input_task.description,
+                "error": str(e),
+            }
+        )
+        raise HTTPException(status_code=400, detail="Error creating plan")
 
-    return {
-        "status": f"Plan created with ID: {plan.id}",
-        "session_id": input_task.session_id,
-        "plan_id": plan.id,
-        "description": input_task.description,
-    }
 
 
 @app.post("/human_feedback")
 async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Request):
+    
     """
     Receive human feedback on a step.
 
@@ -565,7 +548,8 @@ async def get_plans(
             )
             raise HTTPException(status_code=404, detail="Plan not found")
 
-        steps = await memory_store.get_steps_for_plan(plan.id, session_id)
+        # Use get_steps_by_plan to match the original implementation
+        steps = await memory_store.get_steps_by_plan(plan_id=plan.id)
         plan_with_steps = PlanWithSteps(**plan.model_dump(), steps=steps)
         plan_with_steps.update_step_counts()
         return [plan_with_steps]
@@ -573,7 +557,7 @@ async def get_plans(
     all_plans = await memory_store.get_all_plans()
     # Fetch steps for all plans concurrently
     steps_for_all_plans = await asyncio.gather(
-        *[memory_store.get_steps_for_plan(plan.id, plan.session_id) for plan in all_plans]
+        *[memory_store.get_steps_by_plan(plan_id=plan.id) for plan in all_plans]
     )
     # Create list of PlanWithSteps and update step counts
     list_of_plans_with_steps = []
@@ -631,7 +615,7 @@ async def get_steps_by_plan(plan_id: str, request: Request) -> List[Step]:
               updated_action:
                 type: string
                 description: Optional modified action based on feedback
-      400:
+       400:
         description: Missing or invalid user information
       404:
         description: Plan or steps not found
@@ -658,6 +642,9 @@ async def get_agent_messages(session_id: str, request: Request) -> List[AgentMes
       - Agent Messages
     parameters:
       - name: session_id
+        in: path
+        type: string
+        required: true
         in: path
         type: string
         required: true

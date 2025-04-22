@@ -6,24 +6,26 @@ from types import SimpleNamespace
 from semantic_kernel import Kernel
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
+import inspect
 
 from models.agent_types import AgentType
 from kernel_agents.agent_base import BaseAgent
-from config_kernel import Config
+# Import the new AppConfig instance
+from app_config import config
 
 # Import all specialized agent implementations
 from kernel_agents.hr_agent import HrAgent
 from kernel_agents.human_agent import HumanAgent 
 from kernel_agents.marketing_agent import MarketingAgent
 from kernel_agents.generic_agent import GenericAgent
-from kernel_agents.planner_agent import PlannerAgent
 from kernel_agents.tech_support_agent import TechSupportAgent
 from kernel_agents.procurement_agent import ProcurementAgent
 from kernel_agents.product_agent import ProductAgent
+from kernel_agents.planner_agent import PlannerAgent  # Add PlannerAgent import
 from kernel_agents.group_chat_manager import GroupChatManager
 
 from context.cosmos_memory_kernel import CosmosMemoryContext
-from azure.ai.projects.models import Agent
+
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +42,8 @@ class AgentFactory:
         AgentType.TECH_SUPPORT: TechSupportAgent,
         AgentType.GENERIC: GenericAgent,
         AgentType.HUMAN: HumanAgent,
-        AgentType.PLANNER: PlannerAgent,
-        AgentType.GROUP_CHAT_MANAGER: GroupChatManager,
+        AgentType.PLANNER: PlannerAgent,  # Add PlannerAgent
+        AgentType.GROUP_CHAT_MANAGER: GroupChatManager,  # Add GroupChatManager
     }
 
     # Mapping of agent types to their string identifiers (for automatic tool loading)
@@ -53,8 +55,8 @@ class AgentFactory:
         AgentType.TECH_SUPPORT: "tech_support",
         AgentType.GENERIC: "generic",
         AgentType.HUMAN: "human",
-        AgentType.PLANNER: "planner",
-        AgentType.GROUP_CHAT_MANAGER: "group_chat_manager",
+        AgentType.PLANNER: "planner",  # Add planner
+        AgentType.GROUP_CHAT_MANAGER: "group_chat_manager",  # Add group_chat_manager
     }
 
     # System messages for each agent type
@@ -66,8 +68,8 @@ class AgentFactory:
         AgentType.TECH_SUPPORT: "You are a technical support expert helping with technical issues.",
         AgentType.GENERIC: "You are a helpful assistant ready to help with various tasks.",
         AgentType.HUMAN: "You are representing a human user in the conversation.",
-        AgentType.PLANNER: "You are a planner agent responsible for creating and managing plans.",
-        AgentType.GROUP_CHAT_MANAGER: "You are a group chat manager coordinating the conversation between different agents.",
+        AgentType.PLANNER: "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents.",
+        AgentType.GROUP_CHAT_MANAGER: "You are a Group Chat Manager coordinating conversations between different agents to execute plans efficiently.",
     }
 
     # Cache of agent instances by session_id and agent_type
@@ -127,7 +129,7 @@ class AgentFactory:
         # Check if we already have an agent in the cache
         if session_id in cls._agent_cache and agent_type in cls._agent_cache[session_id]:
             return cls._agent_cache[session_id][agent_type]
-            
+
         # Get the agent class
         agent_class = cls._agent_classes.get(agent_type)
         if not agent_class:
@@ -136,8 +138,8 @@ class AgentFactory:
         # Create memory store
         memory_store = CosmosMemoryContext(session_id, user_id)
         
-        # Create a kernel
-        kernel = Config.CreateKernel()
+        # Create a kernel using the AppConfig instance
+        kernel = config.create_kernel()
         
         # Use default system message if none provided
         if system_message is None:
@@ -154,7 +156,7 @@ class AgentFactory:
         definition = None
         client = None
         try:
-            client = Config.GetAIProjectClient()
+            client = config.get_ai_project_client()
         except Exception as client_exc:
             logger.error(f"Error creating AIProjectClient: {client_exc}")
             raise
@@ -162,7 +164,7 @@ class AgentFactory:
             if tools:
                 # Create the agent definition using the AIProjectClient (project-based pattern)
                 definition = await client.agents.create_agent(
-                    model=Config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                    model=config.AZURE_OPENAI_DEPLOYMENT_NAME,
                     name=agent_type_str,
                     instructions=system_message,
                     temperature=temperature,
@@ -176,27 +178,31 @@ class AgentFactory:
         
         # Create the agent instance using the project-based pattern
         try:
-            agent = agent_class(
-                agent_name=agent_type_str,
-                kernel=kernel,
-                session_id=session_id,
-                user_id=user_id,
-                memory_store=memory_store,
-                tools=tools,
-                system_message=system_message,
-                client=client,
-                definition=definition,
+            # Filter kwargs to only those accepted by the agent's __init__
+            agent_init_params = inspect.signature(agent_class.__init__).parameters
+            valid_keys = set(agent_init_params.keys()) - {"self"}
+            filtered_kwargs = {k: v for k, v in {
+                "agent_name": agent_type_str,
+                "kernel": kernel,
+                "session_id": session_id,
+                "user_id": user_id,
+                "memory_store": memory_store,
+                "tools": tools,
+                "system_message": system_message,
+                "client": client,
+                "definition": definition,
                 **kwargs
-            )
+            }.items() if k in valid_keys}
+            agent = agent_class(**filtered_kwargs)
             logger.debug(f"[DEBUG] Agent object after instantiation: {agent}")
-            # Initialize the agent asynchronously
-            init_result = await agent.async_init()
-            logger.debug(f"[DEBUG] Result of agent.async_init(): {init_result}")
+            # Initialize the agent asynchronously if it has async_init
+            if hasattr(agent, 'async_init') and inspect.iscoroutinefunction(agent.async_init):
+                init_result = await agent.async_init()
+                logger.debug(f"[DEBUG] Result of agent.async_init(): {init_result}")
             # Register tools with Azure AI Agent for LLM function calls
-            if hasattr(agent._agent, 'add_function') and tools:
+            if hasattr(agent, '_agent') and hasattr(agent._agent, 'add_function') and tools:
                 for fn in tools:
                     agent._agent.add_function(fn)
-        
         except Exception as e:
             logger.error(
                 f"Error creating agent of type {agent_type} with parameters: {e}"
@@ -239,11 +245,11 @@ class AgentFactory:
                     agent.add_function(tool)
             return agent
         
-        # Create a kernel
-        kernel = Config.CreateKernel()
+        # Create a kernel using the AppConfig instance
+        kernel = config.create_kernel()
         
-        # Await creation since CreateAzureAIAgent is async
-        agent = await Config.CreateAzureAIAgent(
+        # Await creation since create_azure_ai_agent is async
+        agent = await config.create_azure_ai_agent(
             kernel=kernel,
             agent_name=agent_name,
             instructions=system_prompt

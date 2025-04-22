@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.functions.kernel_arguments import KernelArguments
+from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
@@ -21,6 +22,7 @@ from models.messages_kernel import (
     HumanFeedbackStatus,
 )
 from event_utils import track_event_if_configured
+from app_config import config
 
 # Define structured output models
 class StructuredOutputStep(BaseModel):
@@ -33,7 +35,7 @@ class StructuredOutputPlan(BaseModel):
     summary_plan_and_steps: str = Field(description="Brief summary of the plan and steps")
     human_clarification_request: Optional[str] = Field(None, description="Any additional information needed from the human")
 
-class PlannerAgent:
+class PlannerAgent(BaseAgent):
     """Planner agent implementation using Semantic Kernel.
     
     This agent creates and manages plans based on user tasks, breaking them down into steps
@@ -46,9 +48,14 @@ class PlannerAgent:
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
+        tools: Optional[List[KernelFunction]] = None,
+        system_message: Optional[str] = None,
+        agent_name: str = "PlannerAgent",
         config_path: Optional[str] = None,
         available_agents: List[str] = None,
-        agent_tools_list: List[str] = None
+        agent_tools_list: List[str] = None,
+        client=None,
+        definition=None,
     ) -> None:
         """Initialize the Planner Agent.
         
@@ -57,35 +64,64 @@ class PlannerAgent:
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
-            config_path: Optional path to the Planner tools configuration file
+            tools: Optional list of tools for this agent
+            system_message: Optional system message for the agent
+            agent_name: Optional name for the agent (defaults to "PlannerAgent")
+            config_path: Optional path to the configuration file
             available_agents: List of available agent names for creating steps
             agent_tools_list: List of available tools across all agents
+            client: Optional client instance (passed to BaseAgent)
+            definition: Optional definition instance (passed to BaseAgent)
         """
-        self._kernel = kernel
-        self._session_id = session_id
-        self._user_id = user_id
-        self._memory_store = memory_store
-        self._config_path = config_path
+        # Default system message if not provided
+        if not system_message:
+            system_message = "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
         
-        # Store the available agents and their tools
+        # Initialize the base agent
+        super().__init__(
+            agent_name=agent_name,
+            kernel=kernel,
+            session_id=session_id,
+            user_id=user_id,
+            memory_store=memory_store,
+            tools=tools,
+            system_message=system_message,
+            agent_type="planner",  # Use planner_tools.json if available
+            client=client,
+            definition=definition
+        )
+        
+        # Store additional planner-specific attributes
         self._available_agents = available_agents or ["HumanAgent", "HrAgent", "MarketingAgent", 
-                                                    "ProductAgent", "ProcurementAgent", 
-                                                    "TechSupportAgent", "GenericAgent"]
+                                                     "ProductAgent", "ProcurementAgent", 
+                                                     "TechSupportAgent", "GenericAgent"]
         self._agent_tools_list = agent_tools_list or []
         
-        # Load configuration
-        config = BaseAgent.load_tools_config("planner", config_path)
-        self._system_message = config.get(
-            "system_message", 
-            "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
-        )
+        # Create the Azure AI Agent for planning operations
+        # This will be initialized in async_init
+        self._azure_ai_agent = None
         
-        # Create the agent
-        self._agent = kernel.create_semantic_function(
-            function_name="PlannerFunction",
-            prompt=self._system_message,
-            description="Creates and manages execution plans"
-        )
+    async def async_init(self) -> None:
+        """Asynchronously initialize the PlannerAgent.
+        
+        Creates the Azure AI Agent for planning operations.
+        
+        Returns:
+            None
+        """
+        try:
+            # Create the Azure AI Agent using AppConfig
+            self._azure_ai_agent = await config.create_azure_ai_agent(
+                kernel=self._kernel,
+                agent_name="PlannerAgent",
+                instructions=self._generate_instruction(""),
+                temperature=0.0
+            )
+            logging.info("Successfully created Azure AI Agent for PlannerAgent")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to create Azure AI Agent for PlannerAgent: {e}")
+            raise
         
     async def handle_input_task(self, kernel_arguments: KernelArguments) -> str:
         """Handle the initial input task from the user.
@@ -232,38 +268,105 @@ class PlannerAgent:
             # Generate the instruction for the LLM
             instruction = self._generate_instruction(input_task.description)
             
-            # Ask the LLM to generate a structured plan
-            args = KernelArguments(input=instruction)
-            result = await self._agent.invoke_async(kernel_arguments=args)
-            response_content = result.value.strip()
+            # Log the input task for debugging
+            logging.info(f"Creating plan for task: '{input_task.description}'")
+            logging.info(f"Using available agents: {self._available_agents}")
+            
+            # Use the Azure AI Agent instead of direct function invocation
+            if self._azure_ai_agent is None:
+                # Initialize the agent if it's not already done
+                await self.async_init()
+                
+            if self._azure_ai_agent is None:
+                raise RuntimeError("Failed to initialize Azure AI Agent for planning")
+                
+            # Get response from the Azure AI Agent
+            # Based on the method signature, invoke takes only named arguments, not positional ones
+            logging.info(f"Invoking PlannerAgent with instruction length: {len(instruction)}")
+            
+            # Create kernel arguments
+            kernel_args = KernelArguments()
+            kernel_args["input"] = instruction
+            
+            # Call invoke with proper keyword arguments
+            response_content = ""
+            
+            # Use keyword arguments instead of positional arguments
+            # Based on the method signature, we need to pass 'arguments' and possibly 'kernel'
+            async_generator = self._azure_ai_agent.invoke(arguments=kernel_args)
+            
+            # Collect the response from the async generator
+            async for chunk in async_generator:
+                if chunk is not None:
+                    response_content += str(chunk)
+            
+            # Debug the response
+            logging.info(f"Response content length: {len(response_content)}")
+            logging.debug(f"Response content first 500 chars: {response_content[:500]}")
+            # Log more of the response for debugging
+            logging.info(f"Full response: {response_content}")
+            
+            # Check if response is empty or whitespace
+            if not response_content or response_content.isspace():
+                raise ValueError("Received empty response from Azure AI Agent")
             
             # Parse the JSON response using the structured output model
             try:
                 # First try to parse using Pydantic model
                 try:
                     parsed_result = StructuredOutputPlan.parse_raw(response_content)
-                except Exception:
+                except Exception as e1:
+                    logging.warning(f"Failed to parse direct JSON with Pydantic: {str(e1)}")
+                    
                     # If direct parsing fails, try to extract JSON first
                     json_match = re.search(r'```json\s*(.*?)\s*```', response_content, re.DOTALL)
                     if json_match:
                         json_content = json_match.group(1)
-                        parsed_result = StructuredOutputPlan.parse_raw(json_content)
+                        logging.info(f"Found JSON content in markdown code block, length: {len(json_content)}")
+                        try:
+                            parsed_result = StructuredOutputPlan.parse_raw(json_content)
+                        except Exception as e2:
+                            logging.warning(f"Failed to parse extracted JSON with Pydantic: {str(e2)}")
+                            # Try conventional JSON parsing as fallback
+                            json_data = json.loads(json_content)
+                            parsed_result = StructuredOutputPlan.parse_obj(json_data)
                     else:
-                        # Try parsing as regular JSON then convert to Pydantic model
-                        json_data = json.loads(response_content)
-                        parsed_result = StructuredOutputPlan.parse_obj(json_data)
+                        # Try to extract JSON without code blocks - maybe it's embedded in text
+                        # Look for patterns like { ... } that contain "initial_goal" and "steps"
+                        json_pattern = r'\{.*?"initial_goal".*?"steps".*?\}'
+                        alt_match = re.search(json_pattern, response_content, re.DOTALL)
+                        
+                        if alt_match:
+                            potential_json = alt_match.group(0)
+                            logging.info(f"Found potential JSON in text, length: {len(potential_json)}")
+                            try:
+                                json_data = json.loads(potential_json)
+                                parsed_result = StructuredOutputPlan.parse_obj(json_data)
+                            except Exception as e3:
+                                logging.warning(f"Failed to parse potential JSON: {str(e3)}")
+                                # If all extraction attempts fail, try parsing the whole response as JSON
+                                json_data = json.loads(response_content)
+                                parsed_result = StructuredOutputPlan.parse_obj(json_data)
+                        else:
+                            # If we can't find JSON patterns, create a fallback plan from the text
+                            logging.info("Using fallback plan creation from text response")
+                            return await self._create_fallback_plan_from_text(input_task, response_content)
                 
-                # Extract plan details
+                # Extract plan details and log for debugging
                 initial_goal = parsed_result.initial_goal
                 steps_data = parsed_result.steps
                 summary = parsed_result.summary_plan_and_steps
                 human_clarification_request = parsed_result.human_clarification_request
                 
+                # Log the steps and agent assignments for debugging
+                for i, step in enumerate(steps_data):
+                    logging.info(f"Step {i+1} - Agent: {step.agent}, Action: {step.action}")
+                
                 # Create the Plan instance
                 plan = Plan(
                     id=str(uuid.uuid4()),
                     session_id=input_task.session_id,
-                    user_id=input_task.user_id,
+                    user_id=self._user_id,
                     initial_goal=initial_goal,
                     overall_status=PlanStatus.in_progress,
                     summary=summary,
@@ -277,7 +380,7 @@ class PlannerAgent:
                     "Planner - Initial plan and added into the cosmos",
                     {
                         "session_id": input_task.session_id,
-                        "user_id": input_task.user_id,
+                        "user_id": self._user_id,
                         "initial_goal": initial_goal,
                         "overall_status": PlanStatus.in_progress,
                         "source": "PlannerAgent",
@@ -292,6 +395,10 @@ class PlannerAgent:
                     action = step_data.action
                     agent_name = step_data.agent
                     
+                    # Log any unusual agent assignments for debugging
+                    if "onboard" in input_task.description.lower() and agent_name != "HrAgent":
+                        logging.warning(f"UNUSUAL AGENT ASSIGNMENT: Task contains 'onboard' but assigned to {agent_name} instead of HrAgent")
+                    
                     # Validate agent name
                     if agent_name not in self._available_agents:
                         logging.warning(f"Invalid agent name: {agent_name}, defaulting to GenericAgent")
@@ -302,6 +409,7 @@ class PlannerAgent:
                         id=str(uuid.uuid4()),
                         plan_id=plan.id,
                         session_id=input_task.session_id,
+                        user_id=self._user_id,
                         action=action,
                         agent=agent_name,
                         status=StepStatus.planned,
@@ -320,7 +428,7 @@ class PlannerAgent:
                             "agent": agent_name,
                             "status": StepStatus.planned,
                             "session_id": input_task.session_id,
-                            "user_id": input_task.user_id,
+                            "user_id": self._user_id,
                             "human_approval_status": HumanFeedbackStatus.requested,
                         },
                     )
@@ -328,9 +436,11 @@ class PlannerAgent:
                 return plan, steps
                 
             except Exception as e:
-                # If JSON parsing fails, use regex to extract steps
-                logging.warning(f"Failed to parse JSON response: {e}. Falling back to text parsing.")
-                return await self._create_plan_from_text(input_task, response_content)
+                # If JSON parsing fails, log error and create error plan
+                logging.exception(f"Failed to parse JSON response: {e}")
+                logging.info(f"Raw response was: {response_content[:1000]}...")
+                # Try a fallback approach
+                return await self._create_fallback_plan_from_text(input_task, response_content)
                 
         except Exception as e:
             logging.exception(f"Error creating structured plan: {e}")
@@ -339,7 +449,7 @@ class PlannerAgent:
                 f"Planner - Error in create_structured_plan: {e} into the cosmos",
                 {
                     "session_id": input_task.session_id,
-                    "user_id": input_task.user_id,
+                    "user_id": self._user_id,
                     "initial_goal": "Error generating plan",
                     "overall_status": PlanStatus.failed,
                     "source": "PlannerAgent",
@@ -351,7 +461,7 @@ class PlannerAgent:
             error_plan = Plan(
                 id=str(uuid.uuid4()),
                 session_id=input_task.session_id,
-                user_id=input_task.user_id,
+                user_id=self._user_id,
                 initial_goal="Error generating plan",
                 overall_status=PlanStatus.failed,
                 summary=f"Error generating plan: {str(e)}"
@@ -359,8 +469,8 @@ class PlannerAgent:
             
             await self._memory_store.add_plan(error_plan)
             return error_plan, []
-    
-    async def _create_plan_from_text(self, input_task: InputTask, text_content: str) -> Tuple[Plan, List[Step]]:
+            
+    async def _create_fallback_plan_from_text(self, input_task: InputTask, text_content: str) -> Tuple[Plan, List[Step]]:
         """Create a plan from unstructured text when JSON parsing fails.
         
         Args:
@@ -370,6 +480,8 @@ class PlannerAgent:
         Returns:
             Tuple containing the created plan and list of steps
         """
+        logging.info("Creating fallback plan from text content")
+        
         # Extract goal from the text (first line or use input task description)
         goal_match = re.search(r"(?:Goal|Initial Goal|Plan):\s*(.+?)(?:\n|$)", text_content)
         goal = goal_match.group(1).strip() if goal_match else input_task.description
@@ -378,9 +490,10 @@ class PlannerAgent:
         plan = Plan(
             id=str(uuid.uuid4()),
             session_id=input_task.session_id,
-            user_id=input_task.user_id,
+            user_id=self._user_id,
             initial_goal=goal,
-            overall_status=PlanStatus.in_progress
+            overall_status=PlanStatus.in_progress,
+            summary=f"Plan created from {input_task.description}"
         )
         
         # Store the plan
@@ -395,31 +508,57 @@ class PlannerAgent:
             step_pattern = re.compile(r'(\d+)[.:\)]\s*([^:]*?):\s*(.*?)(?=\d+[.:\)]|$)', re.DOTALL)
             matches = step_pattern.findall(text_content)
         
+        # If still no matches, look for bullet points or numbered lists
+        if not matches:
+            step_pattern = re.compile(r'[•\-*]\s*([^:]*?):\s*(.*?)(?=[•\-*]|$)', re.DOTALL)
+            bullet_matches = step_pattern.findall(text_content)
+            if bullet_matches:
+                # Convert bullet matches to our expected format (number, agent, action)
+                matches = []
+                for i, (agent_text, action) in enumerate(bullet_matches, 1):
+                    matches.append((str(i), agent_text.strip(), action.strip()))
+        
         steps = []
-        for match in matches:
-            number = match[0].strip()
-            agent_text = match[1].strip()
-            action = match[2].strip()
-            
-            # Clean up agent name
-            agent = re.sub(r'\s+', '', agent_text)
-            if not agent or agent not in self._available_agents:
-                agent = "GenericAgent"  # Default to GenericAgent if not recognized
-                
-            # Create and store the step
-            step = Step(
+        # If we found no steps at all, create at least one generic step
+        if not matches:
+            generic_step = Step(
                 id=str(uuid.uuid4()),
                 plan_id=plan.id,
                 session_id=input_task.session_id,
-                action=action,
-                agent=agent,
+                user_id=self._user_id,
+                action=f"Process the request: {input_task.description}",
+                agent="GenericAgent",
                 status=StepStatus.planned,
                 human_approval_status=HumanFeedbackStatus.requested
             )
-            
-            await self._memory_store.add_step(step)
-            steps.append(step)
-            
+            await self._memory_store.add_step(generic_step)
+            steps.append(generic_step)
+        else:
+            for match in matches:
+                number = match[0].strip()
+                agent_text = match[1].strip()
+                action = match[2].strip()
+                
+                # Clean up agent name
+                agent = re.sub(r'\s+', '', agent_text)
+                if not agent or agent not in self._available_agents:
+                    agent = "GenericAgent"  # Default to GenericAgent if not recognized
+                    
+                # Create and store the step
+                step = Step(
+                    id=str(uuid.uuid4()),
+                    plan_id=plan.id,
+                    session_id=input_task.session_id,
+                    user_id=self._user_id,
+                    action=action,
+                    agent=agent,
+                    status=StepStatus.planned,
+                    human_approval_status=HumanFeedbackStatus.requested
+                )
+                
+                await self._memory_store.add_step(step)
+                steps.append(step)
+                
         return plan, steps
     
     def _generate_instruction(self, objective: str) -> str:
@@ -437,6 +576,9 @@ class PlannerAgent:
         # Create list of available tools
         tools_str = "\n".join(self._agent_tools_list) if self._agent_tools_list else "Various specialized tools"
         
+        # Build the instruction, avoiding backslashes in f-string expressions
+        objective_part = f"Your objective is:\n{objective}" if objective else "When given an objective, analyze it and create a plan to accomplish it."
+        
         return f"""
         You are the Planner, an AI orchestrator that manages a group of AI agents to accomplish tasks.
 
@@ -445,15 +587,23 @@ class PlannerAgent:
         The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
 
         These actions are passed to the specific agent. Make sure the action contains all the information required for the agent to execute the task.
-
-        Your objective is:
-        {objective}
+        
+        {objective_part}
 
         The agents you have access to are:
         {agents_str}
 
         These agents have access to the following functions:
         {tools_str}
+
+        IMPORTANT AGENT SELECTION GUIDANCE:
+        - HrAgent: ALWAYS use for ALL employee-related tasks like onboarding, hiring, benefits, payroll, training, employee records, ID cards, mentoring, background checks, etc.
+        - MarketingAgent: Use for marketing campaigns, branding, market research, content creation, social media, etc.
+        - ProcurementAgent: Use for purchasing, vendor management, supply chain, asset management, etc.
+        - ProductAgent: Use for product development, roadmaps, features, product feedback, etc.
+        - TechSupportAgent: Use for technical issues, software/hardware setup, troubleshooting, IT support, etc.
+        - GenericAgent: Use only for general knowledge tasks that don't fit other categories
+        - HumanAgent: Use only when human input is absolutely required and no other agent can handle the task
 
         The first step of your plan should be to ask the user for any additional information required to progress the rest of steps planned.
 
@@ -463,31 +613,33 @@ class PlannerAgent:
 
         If there is a single function call that can directly solve the task, only generate a plan with a single step. For example, if someone asks to be granted access to a database, generate a plan with only one step involving the grant_database_access function, with no additional steps.
 
-        When generating the action in the plan, frame the action as an instruction you are passing to the agent to execute. It should be a short, single sentence. Include the function to use. For example, "Set up an Office 365 Account for Jessica Smith. Function: set_up_office_365_account"
-
-        Ensure the summary of the plan and the overall steps is less than 50 words.
-
-        Identify any additional information that might be required to complete the task. Include this information in the plan in the human_clarification_request field of the plan. If it is not required, leave it as null. Do not include information that you are waiting for clarification on in the string of the action field, as this otherwise won't get updated.
-
         You must prioritise using the provided functions to accomplish each step. First evaluate each and every function the agents have access too. Only if you cannot find a function needed to complete the task, and you have reviewed each and every function, and determined why each are not suitable, there are two options you can take when generating the plan.
         First evaluate whether the step could be handled by a typical large language model, without any specialised functions. For example, tasks such as "add 32 to 54", or "convert this SQL code to a python script", or "write a 200 word story about a fictional product strategy".
+
         If a general Large Language Model CAN handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: No suitable function found. A generic LLM model is being used for this step." to the end of the action. Assign these steps to the GenericAgent. For example, if the task is to convert the following SQL into python code (SELECT * FROM employees;), and there is no function to convert SQL to python, write a step with the action "convert the following SQL into python code (SELECT * FROM employees;) EXCEPTION: No suitable function found. A generic LLM model is being used for this step." and assign it to the GenericAgent.
+
         Alternatively, if a general Large Language Model CAN NOT handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: Human support required to do this step, no suitable function found." to the end of the action. Assign these steps to the HumanAgent. For example, if the task is to find the best way to get from A to B, and there is no function to calculate the best route, write a step with the action "Calculate the best route from A to B. EXCEPTION: Human support required, no suitable function found." and assign it to the HumanAgent.
 
         Limit the plan to 6 steps or less.
 
         Choose from {agents_str} ONLY for planning your steps.
         
+        When generating the action in the plan, frame the action as an instruction you are passing to the agent to execute. It should be a short, single sentence. Include the function to use. For example, "Set up an Office 365 Account for Jessica Smith. Function: set_up_office_365_account"
+
+        Ensure the summary of the plan and the overall steps is less than 50 words.
+
+        Identify any additional information that might be required to complete the task. Include this information in the plan in the human_clarification_request field of the plan. If it is not required, leave it as null. Do not include information that you are waiting for clarification on in the string of the action field, as this otherwise won't get updated.
+        
         Return your response as a JSON object with the following structure:
-        {
+        {{
           "initial_goal": "The goal of the plan",
           "steps": [
-            {
+            {{
               "action": "Detailed description of the step action",
               "agent": "AgentName"
-            }
+            }}
           ],
           "summary_plan_and_steps": "Brief summary of the plan and steps",
           "human_clarification_request": "Any additional information needed from the human" 
-        }
+        }}
         """
