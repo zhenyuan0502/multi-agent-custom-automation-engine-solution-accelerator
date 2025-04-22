@@ -63,14 +63,6 @@ This system is intended for developing and deploying custom AI solutions for spe
 ![image](./documentation/images/readme/macae-architecture.png)
 
 
-
-
-### **How to install/deploy**
-
-This guide provides step-by-step instructions for deploying your application using Azure Container Registry (ACR) and Azure Container Apps.
-
-There are several ways to deploy the solution.  You can deploy to run in Azure in one click, or manually, or you can deploy locally.
-
 <h2><img src="./documentation/images/readme/oneClickDeploy.png" width="64">
 <br/>
 QUICK DEPLOY
