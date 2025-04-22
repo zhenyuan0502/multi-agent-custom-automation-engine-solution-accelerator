@@ -268,6 +268,10 @@ class PlannerAgent(BaseAgent):
             # Generate the instruction for the LLM
             instruction = self._generate_instruction(input_task.description)
             
+            # Log the input task for debugging
+            logging.info(f"Creating plan for task: '{input_task.description}'")
+            logging.info(f"Using available agents: {self._available_agents}")
+            
             # Use the Azure AI Agent instead of direct function invocation
             if self._azure_ai_agent is None:
                 # Initialize the agent if it's not already done
@@ -299,6 +303,8 @@ class PlannerAgent(BaseAgent):
             # Debug the response
             logging.info(f"Response content length: {len(response_content)}")
             logging.debug(f"Response content first 500 chars: {response_content[:500]}")
+            # Log more of the response for debugging
+            logging.info(f"Full response: {response_content}")
             
             # Check if response is empty or whitespace
             if not response_content or response_content.isspace():
@@ -346,11 +352,15 @@ class PlannerAgent(BaseAgent):
                             logging.info("Using fallback plan creation from text response")
                             return await self._create_fallback_plan_from_text(input_task, response_content)
                 
-                # Extract plan details
+                # Extract plan details and log for debugging
                 initial_goal = parsed_result.initial_goal
                 steps_data = parsed_result.steps
                 summary = parsed_result.summary_plan_and_steps
                 human_clarification_request = parsed_result.human_clarification_request
+                
+                # Log the steps and agent assignments for debugging
+                for i, step in enumerate(steps_data):
+                    logging.info(f"Step {i+1} - Agent: {step.agent}, Action: {step.action}")
                 
                 # Create the Plan instance
                 plan = Plan(
@@ -384,6 +394,10 @@ class PlannerAgent(BaseAgent):
                 for step_data in steps_data:
                     action = step_data.action
                     agent_name = step_data.agent
+                    
+                    # Log any unusual agent assignments for debugging
+                    if "onboard" in input_task.description.lower() and agent_name != "HrAgent":
+                        logging.warning(f"UNUSUAL AGENT ASSIGNMENT: Task contains 'onboard' but assigned to {agent_name} instead of HrAgent")
                     
                     # Validate agent name
                     if agent_name not in self._available_agents:
