@@ -582,6 +582,15 @@ class PlannerAgent(BaseAgent):
         These agents have access to the following functions:
         {tools_str}
 
+        IMPORTANT AGENT SELECTION GUIDANCE:
+        - HrAgent: ALWAYS use for ALL employee-related tasks like onboarding, hiring, benefits, payroll, training, employee records, ID cards, mentoring, background checks, etc.
+        - MarketingAgent: Use for marketing campaigns, branding, market research, content creation, social media, etc.
+        - ProcurementAgent: Use for purchasing, vendor management, supply chain, asset management, etc.
+        - ProductAgent: Use for product development, roadmaps, features, product feedback, etc.
+        - TechSupportAgent: Use for technical issues, software/hardware setup, troubleshooting, IT support, etc.
+        - GenericAgent: Use only for general knowledge tasks that don't fit other categories
+        - HumanAgent: Use only when human input is absolutely required and no other agent can handle the task
+
         The first step of your plan should be to ask the user for any additional information required to progress the rest of steps planned.
 
         Only use the functions provided as part of your plan. If the task is not possible with the agents and tools provided, create a step with the agent of type Exception and mark the overall status as completed.
@@ -601,15 +610,6 @@ class PlannerAgent(BaseAgent):
 
         Choose from {agents_str} ONLY for planning your steps.
         
-        IMPORTANT AGENT SELECTION GUIDANCE:
-        - For any HR or employee-related tasks such as onboarding, benefits, payroll, ID cards, training, etc., always use the HrAgent
-        - For any marketing-related tasks such as campaigns, product launches, advertising, etc., use the MarketingAgent
-        - For any IT support or technical questions, use the TechSupportAgent
-        - For any procurement or purchasing tasks, use the ProcurementAgent
-        - For product-related tasks or inquiries, use the ProductAgent
-        - Use the HumanAgent when human input or approval is specifically needed
-        - Use the GenericAgent only for general tasks that don't fit other specialized agents
-
         When generating the action in the plan, frame the action as an instruction you are passing to the agent to execute. It should be a short, single sentence. Include the function to use. For example, "Set up an Office 365 Account for Jessica Smith. Function: set_up_office_365_account"
 
         Ensure the summary of the plan and the overall steps is less than 50 words.
