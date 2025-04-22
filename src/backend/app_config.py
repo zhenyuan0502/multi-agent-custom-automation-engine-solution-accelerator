@@ -23,14 +23,14 @@ class AppConfig:
         self.AZURE_CLIENT_SECRET = self._get_optional("AZURE_CLIENT_SECRET")
         
         # CosmosDB settings
-        self.COSMOSDB_ENDPOINT = self._get_optional("COSMOSDB_ENDPOINT", "https://localhost:8081")
-        self.COSMOSDB_DATABASE = self._get_optional("COSMOSDB_DATABASE", "macae-database")
-        self.COSMOSDB_CONTAINER = self._get_optional("COSMOSDB_CONTAINER", "macae-container")
+        self.COSMOSDB_ENDPOINT = self._get_optional("COSMOSDB_ENDPOINT")
+        self.COSMOSDB_DATABASE = self._get_optional("COSMOSDB_DATABASE")
+        self.COSMOSDB_CONTAINER = self._get_optional("COSMOSDB_CONTAINER")
         
         # Azure OpenAI settings
-        self.AZURE_OPENAI_DEPLOYMENT_NAME = self._get_required("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-35-turbo")
-        self.AZURE_OPENAI_API_VERSION = self._get_required("AZURE_OPENAI_API_VERSION", "2023-12-01-preview")
-        self.AZURE_OPENAI_ENDPOINT = self._get_required("AZURE_OPENAI_ENDPOINT", "https://api.openai.com/v1")
+        self.AZURE_OPENAI_DEPLOYMENT_NAME = self._get_required("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o")
+        self.AZURE_OPENAI_API_VERSION = self._get_required("AZURE_OPENAI_API_VERSION", "2024-11-20")
+        self.AZURE_OPENAI_ENDPOINT = self._get_required("AZURE_OPENAI_ENDPOINT")
         self.AZURE_OPENAI_SCOPES = [f"{self._get_optional('AZURE_OPENAI_SCOPE', 'https://cognitiveservices.azure.com/.default')}"]
         
         # Frontend settings
