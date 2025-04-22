@@ -161,7 +161,9 @@ To run the solution site and API backend only locally for development and debugg
  </details>
 
 ### Manual Azure Deployment
-Manual Deployment differs from the ‘Quick Deploy’ option in that it will install an Azure Container Registry (ACR) service, and relies on the installer to build and push the necessary containers to this ACR.  This allows you to build and push your own code changes and provides a sample solution you can customize based on your requirements. See the [local deployment guide](./documentation/ManualAzureDeployment.md).
+Manual Deployment differs from the ‘Quick Deploy’ option in that it will install an Azure Container Registry (ACR) service, and relies on the installer to build and push the necessary containers to this ACR.  This allows you to build and push your own code changes and provides a sample solution you can customize based on your requirements. 
+
+See the [local deployment guide](./documentation/ManualAzureDeployment.md).
 
 
 ### Deploying
