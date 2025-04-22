@@ -2,34 +2,21 @@
 
 To help you get started, here are some **Sample Prompts** you can ask in the app:
 
-## **Sections**
+1. Run each of the following sample prompts and verify that a plan is generated:
+   - Launch a new marketing campaign
+   - Procure new office equipment
+   - Initiate a new product launch
+     
+2. Run the **Onboard employee** prompt:
+   - Remove the employee name from the prompt to test how the solution handles missing information.
+   - The solution should ask for the missing detail before proceeding.
 
-### **Browse**
-The Browse section allows users to explore and retrieve information related to promissory notes. Key functionalities include:
+3. Try running known **RAI test prompts** to confirm safeguard behavior:
+   - You should see a toast message indicating that a plan could not be generated due to policy restrictions.
 
-_Sample Questions:_
+![GeneratePlan](./documentation/images/MACAE-GP1.png)
 
-- What are typical sections in a promissory note?
-- List the details of two promissory notes governed by the laws of the state of California.
+![GeneratePlan](./documentation/images/MACAE-GP2.png)  
 
-### **Generate**
-The Generate section enables users to create new promissory notes with customizable options. Key features include:
 
-_Sample Questions:_
-
-- Generate a promissory note with a proposed $100,000 for Washington State.
-- Remove (section) <Promissory Note> (Any displayed section you can add).
-- Add a Payment acceleration clause after the payment terms section.
-- Click on Generate Draft.
-  
-![GenerateDraft](images/GenerateDraft.png)
-  
-### **Draft**
-The Draft section ensures accuracy and completeness of the generated promissory notes. Key tasks include:
-
-_Sample operation:_
-
-- Task: Re-generate text boxes if they did not populate for any section.
-- Task: Re-generate text box for Borrower with the name: Jane Smith.
-  
-This structured approach ensures that users can efficiently browse, create, and refine promissory notes while maintaining legal compliance and document accuracy.
+_This structured approach helps ensure the system handles prompts gracefully, verifies plan generation flows, and confirms RAI protections are working as intended._
