@@ -1,5 +1,6 @@
 @description('Location for all resources.')
-param location string = 'EastUS2' //Fixed for model availability, change back to resourceGroup().location
+param location string //Fixed for model availability, change back to resourceGroup().location
+
 
 @description('Location for OpenAI resources.')
 param azureOpenAILocation string = 'japaneast' //Fixed for model availability
@@ -7,7 +8,7 @@ param azureOpenAILocation string = 'japaneast' //Fixed for model availability
 
 
 @description('A prefix to add to the start of all resource names. Note: A "unique" suffix will also be added')
-param prefix string = 'macaeo'
+param prefix string = take('macaeo-${uniqueString(resourceGroup().id)}', 10)
 
 @description('Tags to apply to all deployed resources')
 param tags object = {}
