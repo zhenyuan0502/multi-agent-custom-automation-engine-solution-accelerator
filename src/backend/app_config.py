@@ -9,7 +9,6 @@ from azure.ai.projects.aio import AIProjectClient
 from semantic_kernel.kernel import Kernel
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
-
 # Load environment variables from .env file
 load_dotenv()
 
@@ -139,6 +138,8 @@ class AppConfig:
         Returns:
             A new Semantic Kernel instance
         """
+        # Create a new kernel instance without manually configuring OpenAI services
+        # The agents will be created using Azure AI Agent Project pattern instead
         kernel = Kernel()
         return kernel
     

@@ -4,6 +4,7 @@ import logging
 import os
 import uuid
 import re
+import json
 from typing import List, Dict, Optional, Any
 
 # FastAPI imports
@@ -87,7 +88,8 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
     """
     Receive the initial input task from the user.
     """
-    if not rai_success(input_task.description):
+    # Fix 1: Properly await the async rai_success function
+    if not await rai_success(input_task.description):
         print("RAI failed")
 
         track_event_if_configured(
@@ -113,8 +115,8 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
     if not input_task.session_id:
         input_task.session_id = str(uuid.uuid4())
     
-    # Set user ID from authenticated user
-    input_task.user_id = user_id
+    # Fix 2: Don't try to set user_id on InputTask directly since it doesn't have that field
+    # Instead, include it in the JSON we'll pass to the planner
     
     try:
         # Create just the planner agent instead of all agents
@@ -125,8 +127,12 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
             user_id=user_id
         )
         
-        # Use the planner to handle the task - pass input_task_json for compatibility
-        input_task_json = input_task.json()
+        # Convert input task to JSON for the kernel function, add user_id here
+        input_task_data = input_task.model_dump()
+        input_task_data["user_id"] = user_id
+        input_task_json = json.dumps(input_task_data)
+        
+        # Use the planner to handle the task
         result = await planner_agent.handle_input_task(
             KernelArguments(input_task_json=input_task_json)
         )
@@ -151,12 +157,7 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
                         "description": input_task.description,
                     }
                 )
-                return {
-                    "status": "Error: Failed to create plan",
-                    "session_id": input_task.session_id,
-                    "plan_id": "",
-                    "description": input_task.description,
-                }
+                raise HTTPException(status_code=400, detail="Error: Failed to create plan")
         
         # Log custom event for successful input task processing
         track_event_if_configured(
@@ -186,16 +187,13 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
                 "error": str(e),
             }
         )
-        return {
-            "status": f"Error creating plan: {str(e)}",
-            "session_id": input_task.session_id,
-            "plan_id": "",
-            "description": input_task.description,
-        }
+        raise HTTPException(status_code=400, detail="Error creating plan")
+
 
 
 @app.post("/human_feedback")
 async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Request):
+    
     """
     Receive human feedback on a step.
 
@@ -616,7 +614,7 @@ async def get_steps_by_plan(plan_id: str, request: Request) -> List[Step]:
               updated_action:
                 type: string
                 description: Optional modified action based on feedback
-      400:
+       400:
         description: Missing or invalid user information
       404:
         description: Plan or steps not found

@@ -95,12 +95,21 @@ class PlannerAgent(BaseAgent):
                                                      "TechSupportAgent", "GenericAgent"]
         self._agent_tools_list = agent_tools_list or []
         
-        # Create the planning function
+        # Create the planning function using prompt_template_config instead of direct string
+        from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
+        
+        # Create a proper prompt template configuration
+        prompt_config = PromptTemplateConfig(
+            template=self._system_message,
+            name="PlannerFunction",
+            description="Creates and manages execution plans"
+        )
+        
         self._planner_function = KernelFunction.from_prompt(
             function_name="PlannerFunction",
             plugin_name="planner_plugin",
-            prompt_template=self._system_message,
-            description="Creates and manages execution plans"
+            description="Creates and manages execution plans",
+            prompt_template_config=prompt_config
         )
         self._kernel.add_function("planner_plugin", self._planner_function)
         
@@ -251,8 +260,30 @@ class PlannerAgent(BaseAgent):
             
             # Ask the LLM to generate a structured plan
             args = KernelArguments(input=instruction)
-            result = await self._planner_function.invoke_async(kernel_arguments=args)
-            response_content = result.value.strip()
+            
+            # Try different invocation methods based on available API
+            try:
+                # Method 1: Try direct invoke method (newer SK versions)
+                result = await self._kernel.invoke(
+                    self._planner_function,
+                    args
+                )
+            except (AttributeError, TypeError) as e:
+                # Method 2: Try using the kernel to invoke the function by name
+                logging.debug(f"First invoke method failed: {e}, trying alternative")
+                result = await self._kernel.invoke_function_async(
+                    "planner_plugin",
+                    "PlannerFunction", 
+                    input=instruction
+                )
+                
+            # Extract the response content
+            if hasattr(result, 'value'):
+                response_content = result.value.strip()
+            elif isinstance(result, str):
+                response_content = result.strip()
+            else:
+                response_content = str(result).strip()
             
             # Parse the JSON response using the structured output model
             try:
@@ -276,11 +307,11 @@ class PlannerAgent(BaseAgent):
                 summary = parsed_result.summary_plan_and_steps
                 human_clarification_request = parsed_result.human_clarification_request
                 
-                # Create the Plan instance
+                # Create the Plan instance - use self._user_id instead of input_task.user_id
                 plan = Plan(
                     id=str(uuid.uuid4()),
                     session_id=input_task.session_id,
-                    user_id=input_task.user_id,
+                    user_id=self._user_id,  # Use the agent's user_id instead
                     initial_goal=initial_goal,
                     overall_status=PlanStatus.in_progress,
                     summary=summary,
@@ -294,7 +325,7 @@ class PlannerAgent(BaseAgent):
                     "Planner - Initial plan and added into the cosmos",
                     {
                         "session_id": input_task.session_id,
-                        "user_id": input_task.user_id,
+                        "user_id": self._user_id,  # Use the agent's user_id
                         "initial_goal": initial_goal,
                         "overall_status": PlanStatus.in_progress,
                         "source": "PlannerAgent",
@@ -314,11 +345,12 @@ class PlannerAgent(BaseAgent):
                         logging.warning(f"Invalid agent name: {agent_name}, defaulting to GenericAgent")
                         agent_name = "GenericAgent"
                     
-                    # Create the step
+                    # Create the step - use self._user_id instead of input_task.user_id
                     step = Step(
                         id=str(uuid.uuid4()),
                         plan_id=plan.id,
                         session_id=input_task.session_id,
+                        user_id=self._user_id,  # Use the agent's user_id
                         action=action,
                         agent=agent_name,
                         status=StepStatus.planned,
@@ -337,7 +369,7 @@ class PlannerAgent(BaseAgent):
                             "agent": agent_name,
                             "status": StepStatus.planned,
                             "session_id": input_task.session_id,
-                            "user_id": input_task.user_id,
+                            "user_id": self._user_id,  # Use the agent's user_id
                             "human_approval_status": HumanFeedbackStatus.requested,
                         },
                     )
@@ -356,7 +388,7 @@ class PlannerAgent(BaseAgent):
                 f"Planner - Error in create_structured_plan: {e} into the cosmos",
                 {
                     "session_id": input_task.session_id,
-                    "user_id": input_task.user_id,
+                    "user_id": self._user_id,  # Use the agent's user_id
                     "initial_goal": "Error generating plan",
                     "overall_status": PlanStatus.failed,
                     "source": "PlannerAgent",
@@ -364,11 +396,11 @@ class PlannerAgent(BaseAgent):
                 },
             )
             
-            # Create an error plan
+            # Create an error plan - use self._user_id instead of input_task.user_id
             error_plan = Plan(
                 id=str(uuid.uuid4()),
                 session_id=input_task.session_id,
-                user_id=input_task.user_id,
+                user_id=self._user_id,  # Use the agent's user_id
                 initial_goal="Error generating plan",
                 overall_status=PlanStatus.failed,
                 summary=f"Error generating plan: {str(e)}"
@@ -395,7 +427,7 @@ class PlannerAgent(BaseAgent):
         plan = Plan(
             id=str(uuid.uuid4()),
             session_id=input_task.session_id,
-            user_id=input_task.user_id,
+            user_id=self._user_id,
             initial_goal=goal,
             overall_status=PlanStatus.in_progress
         )
@@ -428,6 +460,7 @@ class PlannerAgent(BaseAgent):
                 id=str(uuid.uuid4()),
                 plan_id=plan.id,
                 session_id=input_task.session_id,
+                user_id=self._user_id,
                 action=action,
                 agent=agent,
                 status=StepStatus.planned,
@@ -454,6 +487,7 @@ class PlannerAgent(BaseAgent):
         # Create list of available tools
         tools_str = "\n".join(self._agent_tools_list) if self._agent_tools_list else "Various specialized tools"
         
+        # Use double curly braces to escape them in f-strings
         return f"""
         You are the Planner, an AI orchestrator that manages a group of AI agents to accomplish tasks.
 
@@ -496,15 +530,15 @@ class PlannerAgent(BaseAgent):
         Choose from {agents_str} ONLY for planning your steps.
         
         Return your response as a JSON object with the following structure:
-        {
+        {{
           "initial_goal": "The goal of the plan",
           "steps": [
-            {
+            {{
               "action": "Detailed description of the step action",
               "agent": "AgentName"
-            }
+            }}
           ],
           "summary_plan_and_steps": "Brief summary of the plan and steps",
           "human_clarification_request": "Any additional information needed from the human" 
-        }
+        }}
         """

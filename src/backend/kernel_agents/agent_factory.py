@@ -21,10 +21,11 @@ from kernel_agents.generic_agent import GenericAgent
 from kernel_agents.tech_support_agent import TechSupportAgent
 from kernel_agents.procurement_agent import ProcurementAgent
 from kernel_agents.product_agent import ProductAgent
+from kernel_agents.planner_agent import PlannerAgent  # Add PlannerAgent import
 from kernel_agents.group_chat_manager import GroupChatManager
 
 from context.cosmos_memory_kernel import CosmosMemoryContext
-from azure.ai.projects.models import Agent
+
 
 logger = logging.getLogger(__name__)
 
