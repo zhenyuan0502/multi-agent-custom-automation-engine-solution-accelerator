@@ -237,34 +237,9 @@ class AppConfig:
                 "kernel": kernel
             }
             
-            # Special case for PlannerAgent which doesn't accept agent_name parameter
-            if agent_name == "PlannerAgent":
-                # Import the PlannerAgent class dynamically to avoid circular imports
-                from kernel_agents.planner_agent import PlannerAgent
-                
-                # Import CosmosMemoryContext dynamically to avoid circular imports
-                from context.cosmos_memory_kernel import CosmosMemoryContext
-                
-                # Create a memory store for the agent
-                memory_store = CosmosMemoryContext(
-                    session_id="default", 
-                    user_id="system",
-                    cosmos_container=self.COSMOSDB_CONTAINER,
-                    cosmos_endpoint=self.COSMOSDB_ENDPOINT,
-                    cosmos_database=self.COSMOSDB_DATABASE
-                )
-                
-                # Create PlannerAgent with the correct parameters
-                agent = PlannerAgent(
-                    kernel=kernel,
-                    session_id="default",
-                    user_id="system",
-                    memory_store=memory_store,
-                    # PlannerAgent doesn't need agent_name
-                )
-            else:
-                # For other agents, create using standard AzureAIAgent
-                agent = AzureAIAgent(**agent_kwargs)
+   
+            # For other agents, create using standard AzureAIAgent
+            agent = AzureAIAgent(**agent_kwargs)
             
             # Register the kernel functions with the agent if any were provided
             if kernel_functions:

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.functions.kernel_arguments import KernelArguments
+from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
@@ -21,6 +22,7 @@ from models.messages_kernel import (
     HumanFeedbackStatus,
 )
 from event_utils import track_event_if_configured
+from app_config import config
 
 # Define structured output models
 class StructuredOutputStep(BaseModel):
@@ -95,23 +97,31 @@ class PlannerAgent(BaseAgent):
                                                      "TechSupportAgent", "GenericAgent"]
         self._agent_tools_list = agent_tools_list or []
         
-        # Create the planning function using prompt_template_config instead of direct string
-        from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
+        # Create the Azure AI Agent for planning operations
+        # This will be initialized in async_init
+        self._azure_ai_agent = None
         
-        # Create a proper prompt template configuration
-        prompt_config = PromptTemplateConfig(
-            template=self._system_message,
-            name="PlannerFunction",
-            description="Creates and manages execution plans"
-        )
+    async def async_init(self) -> None:
+        """Asynchronously initialize the PlannerAgent.
         
-        self._planner_function = KernelFunction.from_prompt(
-            function_name="PlannerFunction",
-            plugin_name="planner_plugin",
-            description="Creates and manages execution plans",
-            prompt_template_config=prompt_config
-        )
-        self._kernel.add_function("planner_plugin", self._planner_function)
+        Creates the Azure AI Agent for planning operations.
+        
+        Returns:
+            None
+        """
+        try:
+            # Create the Azure AI Agent using AppConfig
+            self._azure_ai_agent = await config.create_azure_ai_agent(
+                kernel=self._kernel,
+                agent_name="PlannerAgent",
+                instructions=self._generate_instruction(""),
+                temperature=0.0
+            )
+            logging.info("Successfully created Azure AI Agent for PlannerAgent")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to create Azure AI Agent for PlannerAgent: {e}")
+            raise
         
     async def handle_input_task(self, kernel_arguments: KernelArguments) -> str:
         """Handle the initial input task from the user.
@@ -258,32 +268,17 @@ class PlannerAgent(BaseAgent):
             # Generate the instruction for the LLM
             instruction = self._generate_instruction(input_task.description)
             
-            # Ask the LLM to generate a structured plan
-            args = KernelArguments(input=instruction)
-            
-            # Try different invocation methods based on available API
-            try:
-                # Method 1: Try direct invoke method (newer SK versions)
-                result = await self._kernel.invoke(
-                    self._planner_function,
-                    args
-                )
-            except (AttributeError, TypeError) as e:
-                # Method 2: Try using the kernel to invoke the function by name
-                logging.debug(f"First invoke method failed: {e}, trying alternative")
-                result = await self._kernel.invoke_function_async(
-                    "planner_plugin",
-                    "PlannerFunction", 
-                    input=instruction
-                )
+            # Use the Azure AI Agent instead of direct function invocation
+            if self._azure_ai_agent is None:
+                # Initialize the agent if it's not already done
+                await self.async_init()
                 
-            # Extract the response content
-            if hasattr(result, 'value'):
-                response_content = result.value.strip()
-            elif isinstance(result, str):
-                response_content = result.strip()
-            else:
-                response_content = str(result).strip()
+            if self._azure_ai_agent is None:
+                raise RuntimeError("Failed to initialize Azure AI Agent for planning")
+                
+            # Get response from the Azure AI Agent
+            response = await self._azure_ai_agent.invoke_async(instruction)
+            response_content = str(response).strip()
             
             # Parse the JSON response using the structured output model
             try:
@@ -307,11 +302,11 @@ class PlannerAgent(BaseAgent):
                 summary = parsed_result.summary_plan_and_steps
                 human_clarification_request = parsed_result.human_clarification_request
                 
-                # Create the Plan instance - use self._user_id instead of input_task.user_id
+                # Create the Plan instance
                 plan = Plan(
                     id=str(uuid.uuid4()),
                     session_id=input_task.session_id,
-                    user_id=self._user_id,  # Use the agent's user_id instead
+                    user_id=self._user_id,
                     initial_goal=initial_goal,
                     overall_status=PlanStatus.in_progress,
                     summary=summary,
@@ -325,7 +320,7 @@ class PlannerAgent(BaseAgent):
                     "Planner - Initial plan and added into the cosmos",
                     {
                         "session_id": input_task.session_id,
-                        "user_id": self._user_id,  # Use the agent's user_id
+                        "user_id": self._user_id,
                         "initial_goal": initial_goal,
                         "overall_status": PlanStatus.in_progress,
                         "source": "PlannerAgent",
@@ -345,12 +340,12 @@ class PlannerAgent(BaseAgent):
                         logging.warning(f"Invalid agent name: {agent_name}, defaulting to GenericAgent")
                         agent_name = "GenericAgent"
                     
-                    # Create the step - use self._user_id instead of input_task.user_id
+                    # Create the step
                     step = Step(
                         id=str(uuid.uuid4()),
                         plan_id=plan.id,
                         session_id=input_task.session_id,
-                        user_id=self._user_id,  # Use the agent's user_id
+                        user_id=self._user_id,
                         action=action,
                         agent=agent_name,
                         status=StepStatus.planned,
@@ -369,7 +364,7 @@ class PlannerAgent(BaseAgent):
                             "agent": agent_name,
                             "status": StepStatus.planned,
                             "session_id": input_task.session_id,
-                            "user_id": self._user_id,  # Use the agent's user_id
+                            "user_id": self._user_id,
                             "human_approval_status": HumanFeedbackStatus.requested,
                         },
                     )
@@ -388,7 +383,7 @@ class PlannerAgent(BaseAgent):
                 f"Planner - Error in create_structured_plan: {e} into the cosmos",
                 {
                     "session_id": input_task.session_id,
-                    "user_id": self._user_id,  # Use the agent's user_id
+                    "user_id": self._user_id,
                     "initial_goal": "Error generating plan",
                     "overall_status": PlanStatus.failed,
                     "source": "PlannerAgent",
@@ -396,11 +391,11 @@ class PlannerAgent(BaseAgent):
                 },
             )
             
-            # Create an error plan - use self._user_id instead of input_task.user_id
+            # Create an error plan
             error_plan = Plan(
                 id=str(uuid.uuid4()),
                 session_id=input_task.session_id,
-                user_id=self._user_id,  # Use the agent's user_id
+                user_id=self._user_id,
                 initial_goal="Error generating plan",
                 overall_status=PlanStatus.failed,
                 summary=f"Error generating plan: {str(e)}"
@@ -496,9 +491,8 @@ class PlannerAgent(BaseAgent):
         The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
 
         These actions are passed to the specific agent. Make sure the action contains all the information required for the agent to execute the task.
-
-        Your objective is:
-        {objective}
+        
+        {f"Your objective is:\\n{objective}" if objective else "When given an objective, analyze it and create a plan to accomplish it."}
 
         The agents you have access to are:
         {agents_str}
