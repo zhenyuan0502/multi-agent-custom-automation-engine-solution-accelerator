@@ -590,20 +590,31 @@ class PlannerAgent(BaseAgent):
 
         If there is a single function call that can directly solve the task, only generate a plan with a single step. For example, if someone asks to be granted access to a database, generate a plan with only one step involving the grant_database_access function, with no additional steps.
 
-        When generating the action in the plan, frame the action as an instruction you are passing to the agent to execute. It should be a short, single sentence. Include the function to use. For example, "Set up an Office 365 Account for Jessica Smith. Function: set_up_office_365_account"
-
-        Ensure the summary of the plan and the overall steps is less than 50 words.
-
-        Identify any additional information that might be required to complete the task. Include this information in the plan in the human_clarification_request field of the plan. If it is not required, leave it as null. Do not include information that you are waiting for clarification on in the string of the action field, as this otherwise won't get updated.
-
         You must prioritise using the provided functions to accomplish each step. First evaluate each and every function the agents have access too. Only if you cannot find a function needed to complete the task, and you have reviewed each and every function, and determined why each are not suitable, there are two options you can take when generating the plan.
         First evaluate whether the step could be handled by a typical large language model, without any specialised functions. For example, tasks such as "add 32 to 54", or "convert this SQL code to a python script", or "write a 200 word story about a fictional product strategy".
+
         If a general Large Language Model CAN handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: No suitable function found. A generic LLM model is being used for this step." to the end of the action. Assign these steps to the GenericAgent. For example, if the task is to convert the following SQL into python code (SELECT * FROM employees;), and there is no function to convert SQL to python, write a step with the action "convert the following SQL into python code (SELECT * FROM employees;) EXCEPTION: No suitable function found. A generic LLM model is being used for this step." and assign it to the GenericAgent.
+
         Alternatively, if a general Large Language Model CAN NOT handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: Human support required to do this step, no suitable function found." to the end of the action. Assign these steps to the HumanAgent. For example, if the task is to find the best way to get from A to B, and there is no function to calculate the best route, write a step with the action "Calculate the best route from A to B. EXCEPTION: Human support required, no suitable function found." and assign it to the HumanAgent.
 
         Limit the plan to 6 steps or less.
 
         Choose from {agents_str} ONLY for planning your steps.
+        
+        IMPORTANT AGENT SELECTION GUIDANCE:
+        - For any HR or employee-related tasks such as onboarding, benefits, payroll, ID cards, training, etc., always use the HrAgent
+        - For any marketing-related tasks such as campaigns, product launches, advertising, etc., use the MarketingAgent
+        - For any IT support or technical questions, use the TechSupportAgent
+        - For any procurement or purchasing tasks, use the ProcurementAgent
+        - For product-related tasks or inquiries, use the ProductAgent
+        - Use the HumanAgent when human input or approval is specifically needed
+        - Use the GenericAgent only for general tasks that don't fit other specialized agents
+
+        When generating the action in the plan, frame the action as an instruction you are passing to the agent to execute. It should be a short, single sentence. Include the function to use. For example, "Set up an Office 365 Account for Jessica Smith. Function: set_up_office_365_account"
+
+        Ensure the summary of the plan and the overall steps is less than 50 words.
+
+        Identify any additional information that might be required to complete the task. Include this information in the plan in the human_clarification_request field of the plan. If it is not required, leave it as null. Do not include information that you are waiting for clarification on in the string of the action field, as this otherwise won't get updated.
         
         Return your response as a JSON object with the following structure:
         {{
