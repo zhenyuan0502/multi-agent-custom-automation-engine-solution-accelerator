@@ -232,6 +232,58 @@ If you are using VSCode, you can use the debug configuration shown in the [local
 
 To help you get started, here are some [Sample Questions](./documentation/SampleQuestions.md) you can follow once your application is up and running.
 
+<h2>
+</br>
+Responsible AI Transparency FAQ 
+</h2>
+
+Please refer to [Transparency FAQ](./documentation/TRANSPARENCY_FAQ.md) for responsible AI transparency details of this solution accelerator.
+
+<h2>
+Supporting documentation
+</h2>
+
+### Costs
+
+Pricing varies per region and usage, so it isn't possible to predict exact costs for your usage.
+The majority of the Azure resources used in this infrastructure are on usage-based pricing tiers.
+However, Azure Container Registry has a fixed cost per registry per day.
+
+You can try the [Azure pricing calculator](https://azure.microsoft.com/en-us/pricing/calculator) for the resources:
+
+* Azure AI Foundry: Free tier. [Pricing](https://azure.microsoft.com/pricing/details/ai-studio/)
+* Azure AI Services: S0 tier, defaults to gpt-4o. Pricing is based on token count. [Pricing](https://azure.microsoft.com/pricing/details/cognitive-services/)
+* Azure Container App: Consumption tier with 0.5 CPU, 1GiB memory/storage. Pricing is based on resource allocation, and each month allows for a certain amount of free usage. [Pricing](https://azure.microsoft.com/pricing/details/container-apps/)
+* Azure Container Registry: Basic tier. [Pricing](https://azure.microsoft.com/pricing/details/container-registry/)
+* Azure Cosmos DB: [Pricing](https://azure.microsoft.com/en-us/pricing/details/cosmos-db/autoscale-provisioned/)
+
+
+⚠️ To avoid unnecessary costs, remember to take down your app if it's no longer in use,
+either by deleting the resource group in the Portal or running `azd down`.
+
+### Security guidelines
+
+This template uses Azure Key Vault to store all connections to communicate between resources.
+
+This template also uses [Managed Identity](https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/overview) for local development and deployment.
+
+To ensure continued best practices in your own repository, we recommend that anyone creating solutions based on our templates ensure that the [Github secret scanning](https://docs.github.com/code-security/secret-scanning/about-secret-scanning) setting is enabled.
+
+You may want to consider additional security measures, such as:
+
+* Enabling Microsoft Defender for Cloud to [secure your Azure resources](https://learn.microsoft.com/azure/security-center/defender-for-cloud).
+* Protecting the Azure Container Apps instance with a [firewall](https://learn.microsoft.com/azure/container-apps/waf-app-gateway) and/or [Virtual Network](https://learn.microsoft.com/azure/container-apps/networking?tabs=workload-profiles-env%2Cazure-cli).
+
+
+
+### Additional Resources
+- [Python FastAPI documentation](https://fastapi.tiangolo.com/learn/)
+- [AutoGen Framework Documentation](https://microsoft.github.io/autogen/dev/user-guide/core-user-guide/index.html)
+- [Azure Container App documentation](https://learn.microsoft.com/en-us/azure/azure-functions/functions-how-to-custom-container?tabs=core-tools%2Cacr%2Cazure-cli2%2Cazure-cli&pivots=container-apps)
+- [Azure OpenAI Service - Documentation, quickstarts, API reference - Azure AI services | Microsoft Learn](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/use-your-data)
+- [Azure Cosmos DB documentation](https://learn.microsoft.com/en-us/azure/cosmos-db/)
+
+
 ## Supporting documentation
 
 ### How to customize
@@ -245,19 +297,7 @@ This solution is designed to be easily customizable. You can modify the front en
 - [Azure Container App documentation](https://learn.microsoft.com/en-us/azure/azure-functions/functions-how-to-custom-container?tabs=core-tools%2Cacr%2Cazure-cli2%2Cazure-cli&pivots=container-apps)
 - [Azure OpenAI Service - Documentation, quickstarts, API reference - Azure AI services | Microsoft Learn](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/use-your-data)
 - [Azure Cosmos DB documentation](https://learn.microsoft.com/en-us/azure/cosmos-db/)
-  
 
-<h2><img src="./documentation/images/readme/customerTruth.png" width="64">
-</br>
-Customer truth
-</h2>
-Customer stories coming soon.
-
-<br/>
-<br/>
-<br/>
-
----
 
 ## Disclaimers
 
@@ -270,3 +310,7 @@ You acknowledge that the Software and Microsoft Products and Services (1) are no
 You acknowledge the Software is not subject to SOC 1 and SOC 2 compliance audits. No Microsoft technology, nor any of its component technologies, including the Software, is intended or made available as a substitute for the professional advice, opinion, or judgement of a certified financial services professional. Do not use the Software to replace, substitute, or provide professional financial advice or judgment.  
 
 BY ACCESSING OR USING THE SOFTWARE, YOU ACKNOWLEDGE THAT THE SOFTWARE IS NOT DESIGNED OR INTENDED TO SUPPORT ANY USE IN WHICH A SERVICE INTERRUPTION, DEFECT, ERROR, OR OTHER FAILURE OF THE SOFTWARE COULD RESULT IN THE DEATH OR SERIOUS BODILY INJURY OF ANY PERSON OR IN PHYSICAL OR ENVIRONMENTAL DAMAGE (COLLECTIVELY, “HIGH-RISK USE”), AND THAT YOU WILL ENSURE THAT, IN THE EVENT OF ANY INTERRUPTION, DEFECT, ERROR, OR OTHER FAILURE OF THE SOFTWARE, THE SAFETY OF PEOPLE, PROPERTY, AND THE ENVIRONMENT ARE NOT REDUCED BELOW A LEVEL THAT IS REASONABLY, APPROPRIATE, AND LEGAL, WHETHER IN GENERAL OR IN A SPECIFIC INDUSTRY. BY ACCESSING THE SOFTWARE, YOU FURTHER ACKNOWLEDGE THAT YOUR HIGH-RISK USE OF THE SOFTWARE IS AT YOUR OWN RISK.  
+
+---
+
+
