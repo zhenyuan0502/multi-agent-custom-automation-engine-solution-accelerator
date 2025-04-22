@@ -9,7 +9,7 @@ By default this template will use the environment name as the prefix to prevent 
 Change the Secondary Location (example: eastus2, westus2, etc.)
 
 ```shell
-azd env set AZURE_ENV_SECONDARY_LOCATION eastus2
+azd env set AZURE_ENV_COSMOS_LOCATION eastus2
 ```
 
 Change the Model Deployment Type (allowed values: Standard, GlobalStandard)
