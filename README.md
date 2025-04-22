@@ -235,6 +235,10 @@ Please refer to [Transparency FAQ](./documentation/TRANSPARENCY_FAQ.md) for resp
 Supporting documentation
 </h2>
 
+### How to customize
+
+This solution is designed to be easily customizable. You can modify the front end site, or even build your own front end and attach to the backend API. You can further customize the backend by adding your own agents with their own specific capabilities. Deeper technical information to aid in this customization can be found in this [document](./documentation/CustomizeSolution.md).
+
 ### Costs
 
 Pricing varies per region and usage, so it isn't possible to predict exact costs for your usage.
@@ -267,23 +271,7 @@ You may want to consider additional security measures, such as:
 * Protecting the Azure Container Apps instance with a [firewall](https://learn.microsoft.com/azure/container-apps/waf-app-gateway) and/or [Virtual Network](https://learn.microsoft.com/azure/container-apps/networking?tabs=workload-profiles-env%2Cazure-cli).
 
 
-
 ### Additional Resources
-- [Python FastAPI documentation](https://fastapi.tiangolo.com/learn/)
-- [AutoGen Framework Documentation](https://microsoft.github.io/autogen/dev/user-guide/core-user-guide/index.html)
-- [Azure Container App documentation](https://learn.microsoft.com/en-us/azure/azure-functions/functions-how-to-custom-container?tabs=core-tools%2Cacr%2Cazure-cli2%2Cazure-cli&pivots=container-apps)
-- [Azure OpenAI Service - Documentation, quickstarts, API reference - Azure AI services | Microsoft Learn](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/use-your-data)
-- [Azure Cosmos DB documentation](https://learn.microsoft.com/en-us/azure/cosmos-db/)
-
-
-## Supporting documentation
-
-### How to customize
-
-This solution is designed to be easily customizable. You can modify the front end site, or even build your own front end and attach to the backend API. You can further customize the backend by adding your own agents with their own specific capabilities. Deeper technical information to aid in this customization can be found in this [document](./documentation/CustomizeSolution.md).
-
-### Additional resources
-
 - [Python FastAPI documentation](https://fastapi.tiangolo.com/learn/)
 - [AutoGen Framework Documentation](https://microsoft.github.io/autogen/dev/user-guide/core-user-guide/index.html)
 - [Azure Container App documentation](https://learn.microsoft.com/en-us/azure/azure-functions/functions-how-to-custom-container?tabs=core-tools%2Cacr%2Cazure-cli2%2Cazure-cli&pivots=container-apps)
