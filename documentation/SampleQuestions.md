@@ -14,9 +14,12 @@ To help you get started, here are some **Sample Prompts** you can ask in the app
 3. Try running known **RAI test prompts** to confirm safeguard behavior:
    - You should see a toast message indicating that a plan could not be generated due to policy restrictions.
 
-![GeneratePlan](./documentation/images/MACAE-GP1.png)
 
-![GeneratePlan](./documentation/images/MACAE-GP2.png)  
+**Home Page**
+![HomePage](images/MACAE-GP1.png)
+
+**Task Page**
+![GeneratedPlan](images/MACAE-GP2.png)  
 
 
 _This structured approach helps ensure the system handles prompts gracefully, verifies plan generation flows, and confirms RAI protections are working as intended._
