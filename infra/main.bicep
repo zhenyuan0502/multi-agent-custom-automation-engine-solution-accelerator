@@ -1,13 +1,38 @@
 @description('Location for all resources.')
-param location string = 'EastUS2' //Fixed for model availability, change back to resourceGroup().location
+param location string
 
-@description('Location for OpenAI resources.')
-param azureOpenAILocation string = 'japaneast' //Fixed for model availability
+@allowed([
+  'australiaeast'
+  'brazilsouth'
+  'canadacentral'
+  'canadaeast'
+  'eastus'
+  'eastus2'
+  'francecentral'
+  'germanywestcentral'
+  'japaneast'
+  'koreacentral'
+  'northcentralus'
+  'norwayeast'
+  'polandcentral'
+  'southafricanorth'
+  'southcentralus'
+  'southindia'
+  'swedencentral'
+  'switzerlandnorth'
+  'uaenorth'
+  'uksouth'
+  'westeurope'
+  'westus'
+  'westus3'
+])
+@description('Location for all Ai services resources. This location can be different from the resource group location.')
+param azureOpenAILocation string // The location used for all deployed resources.  This location must be in the same region as the resource group.
 
-
-
-@description('A prefix to add to the start of all resource names. Note: A "unique" suffix will also be added')
-param prefix string = 'macaeo'
+@minLength(3)
+@maxLength(20)
+@description('Prefix for all resources created by this template.  This prefix will be used to create unique names for all resources.  The prefix must be unique within the resource group.')
+param prefix string
 
 @description('Tags to apply to all deployed resources')
 param tags object = {}
@@ -30,7 +55,7 @@ param resourceSize {
     maxReplicas: 1
   }
 }
-param capacity int = 1
+param capacity int = 10
 
 
 var modelVersion = '2024-08-06'
@@ -141,33 +166,6 @@ module aifoundry 'deploy_ai_foundry.bicep' = {
   }
   scope: resourceGroup(resourceGroup().name)
 }
-// resource openai 'Microsoft.CognitiveServices/accounts@2023-10-01-preview' = {
-//   name: format(uniqueNameFormat, 'openai')
-//   location: azureOpenAILocation
-//   tags: tags
-//   kind: 'OpenAI'
-//   sku: {
-//     name: 'S0'
-//   }
-//   properties: {
-//     customSubDomainName: format(uniqueNameFormat, 'openai')
-//   }
-//   resource gpt4o 'deployments' = {
-//     name: 'gpt-4o'
-//     sku: {
-//       name: 'GlobalStandard'
-//       capacity: resourceSize.gpt4oCapacity
-//     }
-//     properties: {
-//       model: {
-//         format: 'OpenAI'
-//         name: gptModelVersion
-//         version: '2024-08-06'
-//       }
-//       versionUpgradeOption: 'NoAutoUpgrade'
-//     }
-//   }
-// }
 
 resource aoaiUserRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-05-01-preview' existing = {
   name: '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd' //'Cognitive Services OpenAI User'
@@ -339,6 +337,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: aiServices.properties.endpoint
             }
             {
+              name: 'AZURE_OPENAI_MODEL_NAME'
+              value: gptModelVersion
+            }
+            {
               name: 'AZURE_OPENAI_DEPLOYMENT_NAME'
               value: gptModelVersion
             }
@@ -347,13 +349,34 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: aoaiApiVersion
             }
             {
-              name: 'FRONTEND_SITE_NAME'
-              value: 'https://${format(uniqueNameFormat, 'frontend')}.azurewebsites.net'
+              name: 'APPLICATIONINSIGHTS_INSTRUMENTATION_KEY'
+              value: appInsights.properties.InstrumentationKey
             }
             {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
               value: appInsights.properties.ConnectionString
             }
+            {
+              name: 'AZURE_AI_AGENT_PROJECT_CONNECTION_STRING'
+              value: aifoundry.outputs.projectConnectionString
+            }
+            {
+              name: 'AZURE_AI_SUBSCRIPTION_ID'
+              value: subscription().subscriptionId
+            }
+            {
+              name: 'AZURE_AI_RESOURCE_GROUP'
+              value: resourceGroup().name
+            }
+            {
+              name: 'AZURE_AI_PROJECT_NAME'
+              value: aifoundry.outputs.aiProjectName
+            }
+            {
+              name: 'FRONTEND_SITE_NAME'
+              value: 'https://${format(uniqueNameFormat, 'frontend')}.azurewebsites.net'
+            }
+
           ]
         }
       ]
@@ -413,6 +436,23 @@ resource frontendAppService 'Microsoft.Web/sites@2021-02-01' = {
     userAssignedIdentities: {
       '${pullIdentity.id}': {}
     }
+  }
+}
+
+resource aiHubProject 'Microsoft.MachineLearningServices/workspaces@2024-01-01-preview' existing = {
+  name: '${prefix}-aiproject' // aiProjectName must be calculated - available at main start.
+}
+
+resource aiDeveloper 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  name: '64702f94-c441-49e6-a78b-ef80e0188fee'
+}
+
+resource aiDeveloperAccessProj 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerApp.name, aiHubProject.id, aiDeveloper.id)
+  scope: aiHubProject
+  properties: {
+    roleDefinitionId: aiDeveloper.id
+    principalId: containerApp.identity.principalId
   }
 }
 
