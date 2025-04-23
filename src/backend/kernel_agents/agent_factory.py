@@ -23,10 +23,14 @@ from kernel_agents.procurement_agent import ProcurementAgent
 from kernel_agents.product_agent import ProductAgent
 from kernel_agents.planner_agent import PlannerAgent  # Add PlannerAgent import
 from kernel_agents.group_chat_manager import GroupChatManager
-
+from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from models.messages_kernel import PlannerResponsePlan
 
-
+from azure.ai.projects.models import (
+    ResponseFormatJsonSchema,
+    ResponseFormatJsonSchemaType,
+)
 logger = logging.getLogger(__name__)
 
 
@@ -108,6 +112,7 @@ class AgentFactory:
         user_id: str,
         temperature: float = 0.0,
         system_message: Optional[str] = None,
+        response_format: Optional[Any] = None,
         **kwargs
     ) -> BaseAgent:
         """Create an agent of the specified type.
@@ -174,7 +179,7 @@ class AgentFactory:
                     name=agent_type_str,
                     instructions=system_message,
                     temperature=temperature,
-                    response_format=None  # Add response_format if required
+                    response_format=response_format  # Add response_format if required
                 )
                 logger.info(f"Successfully created agent definition for {agent_type_str}")
         except Exception as agent_exc:
@@ -225,57 +230,6 @@ class AgentFactory:
         return agent
 
     @classmethod
-    async def create_azure_ai_agent(
-        cls,
-        agent_name: str,
-        session_id: str,
-        system_prompt: str,
-        tools: List[KernelFunction] = None
-    ) -> AzureAIAgent:
-        """Create an Azure AI Agent.
-        
-        Args:
-            agent_name: The name of the agent
-            session_id: The session ID
-            system_prompt: The system prompt for the agent
-            tools: Optional list of tools for the agent
-            
-        Returns:
-            An Azure AI Agent instance
-        """
-        # Check if we already have an agent in the cache
-        cache_key = f"{session_id}_{agent_name}"
-        if session_id in cls._azure_ai_agent_cache and cache_key in cls._azure_ai_agent_cache[session_id]:
-            # If tools are provided, make sure they are registered with the cached agent
-            agent = cls._azure_ai_agent_cache[session_id][cache_key]
-            if tools:
-                for tool in tools:
-                    agent.add_function(tool)
-            return agent
-        
-        # Create a kernel using the AppConfig instance
-        kernel = config.create_kernel()
-        
-        # Await creation since create_azure_ai_agent is async
-        agent = await config.create_azure_ai_agent(
-            kernel=kernel,
-            agent_name=agent_name,
-            instructions=system_prompt
-        )
-        
-        # Register tools if provided
-        if tools:
-            for tool in tools:
-                agent.add_function(tool)
-                
-        # Cache the agent instance
-        if session_id not in cls._azure_ai_agent_cache:
-            cls._azure_ai_agent_cache[session_id] = {}
-        cls._azure_ai_agent_cache[session_id][cache_key] = agent
-        
-        return agent
-        
-    @classmethod
     async def _load_tools_for_agent(cls, kernel: Kernel, agent_type: str) -> List[KernelFunction]:
         """Load tools for an agent from the tools directory.
         
@@ -310,7 +264,7 @@ class AgentFactory:
             # For other agent types, try to create a simple fallback tool
             try:
                 # Use PromptTemplateConfig to create a simple tool
-                from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
+                
                 
                 # Simple minimal prompt
                 prompt = f"""You are a helpful assistant specialized in {agent_type} tasks.
@@ -398,7 +352,14 @@ Provide a helpful response."""
             session_id=session_id,
             user_id=user_id,
             temperature=temperature,
-            agent_instances=agent_instances  # Pass agent instances to the planner
+            agent_instances=agent_instances,  # Pass agent instances to the planner
+            response_format=ResponseFormatJsonSchemaType(
+                    json_schema=ResponseFormatJsonSchema(
+            name=PlannerResponsePlan.__name__,
+            description=f"respond with {PlannerResponsePlan.__name__.lower()}",
+            schema=PlannerResponsePlan.model_json_schema(),
+        )
+    )
         )
         agents[planner_agent_type] = planner_agent
         
