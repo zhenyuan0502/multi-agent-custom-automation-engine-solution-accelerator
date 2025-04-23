@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.functions.kernel_arguments import KernelArguments
-from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
