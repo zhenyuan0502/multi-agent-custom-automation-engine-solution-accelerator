@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+
 azure-cosmos
 azure-monitor-opentelemetry
 azure-monitor-events-extension
@@ -13,7 +14,7 @@ opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-openai
 opentelemetry-exporter-otlp-proto-http
 
-semantic-kernel
+semantic-kernel[azure]
 azure-ai-projects 
 openai 
 azure-ai-inference 
