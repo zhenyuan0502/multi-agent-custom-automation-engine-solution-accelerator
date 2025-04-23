@@ -110,8 +110,6 @@ class BaseAgent(AzureAIAgent):
         # Required properties for AgentGroupChat compatibility
         self.name = agent_name  # This is crucial for AgentGroupChat to identify agents
         
-        # Log initialization
-        logging.info(f"Initialized {agent_name} with {len(self._tools)} tools")
         
         # Register the handler functions
         self._register_functions()
@@ -541,11 +539,6 @@ class BaseAgent(AzureAIAgent):
             except Exception as e:
                 logging.error(f"Failed to create tool '{tool.get('name', 'unknown')}': {str(e)}")
                 
-        # Log the total number of tools created
-        if kernel_functions:
-            logging.info(f"Created {len(kernel_functions)} tools for agent type '{agent_type}'")
-        else:
-            logging.info(f"No tools were successfully created for agent type '{agent_type}'")
                 
         return kernel_functions
 
