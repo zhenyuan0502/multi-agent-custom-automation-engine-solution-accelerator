@@ -680,23 +680,5 @@ class PlannerAgent(BaseAgent):
         Limit the plan to 6 steps or less.
 
         Choose from {agents_str} ONLY for planning your steps.
-        
-        When generating the action in the plan, frame the action as an instruction you are passing to the agent to execute. It should be a short, single sentence. Include the function to use. For example, "Set up an Office 365 Account for Jessica Smith. Function: set_up_office_365_account"
 
-        Ensure the summary of the plan and the overall steps is less than 50 words.
-
-        Identify any additional information that might be required to complete the task. Include this information in the plan in the human_clarification_request field of the plan. If it is not required, leave it as null. Do not include information that you are waiting for clarification on in the string of the action field, as this otherwise won't get updated.
-        
-        Return your response as a JSON object with the following structure:
-        {{
-          "initial_goal": "The goal of the plan",
-          "steps": [
-            {{
-              "action": "Detailed description of the step action",
-              "agent": "AgentName"
-            }}
-          ],
-          "summary_plan_and_steps": "Brief summary of the plan and steps",
-          "human_clarification_request": "Any additional information needed from the human" 
-        }}
         """

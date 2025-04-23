@@ -5,11 +5,30 @@ import re
 from typing import Dict, List, Optional, Any, Tuple
 
 import semantic_kernel as sk
-from semantic_kernel.agents import AgentGroupChat
+from semantic_kernel.functions.kernel_arguments import KernelArguments
+from semantic_kernel.agents import AgentGroupChat  # pylint: disable=E0611
+
 from semantic_kernel.agents.strategies import (
     SequentialSelectionStrategy,
     TerminationStrategy,
 )
+# Updated imports for compatibility 
+try:
+    # Try importing from newer structure first
+    from semantic_kernel.contents import ChatMessageContent, ChatHistory
+except ImportError:
+    # Fall back to older structure for compatibility
+    class ChatMessageContent:
+        """Compatibility class for older SK versions."""
+        def __init__(self, role="", content="", name=None):
+            self.role = role
+            self.content = content
+            self.name = name
+
+    class ChatHistory:
+        """Compatibility class for older SK versions."""
+        def __init__(self):
+            self.messages = []
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
@@ -103,42 +122,46 @@ class GroupChatManager:
             
             Args:
                 agents: List of available agents
-                history: Chat history
+                history: Chat history (ChatHistory object)
                 
             Returns:
                 The next agent to take the turn
             """
             # If no history, start with the PlannerAgent
-            if not history:
+            if not history or not history.messages:
                 return next((agent for agent in agents if agent.name == "PlannerAgent"), None)
             
             # Get the last message
-            last_message = history[-1]
+            last_message = history.messages[-1]
             
-            match last_message.name:
-                case "PlannerAgent":
-                    # After the planner creates a plan, HumanAgent should review it
-                    return next((agent for agent in agents if agent.name == "HumanAgent"), None)
-                    
-                case "HumanAgent":
-                    # After human feedback, the specific agent for the step should proceed
-                    # Need to extract which agent should be next from the plan
-                    # For demo purposes, going with a simple approach
-                    # In a real implementation, we would look up the next step in the plan
-                    return next((agent for agent in agents if agent.name == "GenericAgent"), None)
-                    
-                case "GroupChatManager":
-                    # If the manager just assigned a step, the specific agent should execute it
-                    # For demo purposes, we'll just use the next agent in a simple rotation
-                    current_agent_index = next((i for i, agent in enumerate(agents) 
-                                              if agent.name == last_message.name), 0)
-                    next_index = (current_agent_index + 1) % len(agents)
+            # Extract name from the message - in SK ChatMessageContent
+            last_sender = last_message.role
+            if hasattr(last_message, 'name') and last_message.name:
+                last_sender = last_message.name
+            
+            # Route based on the last sender
+            if last_sender == "PlannerAgent":
+                # After the planner creates a plan, HumanAgent should review it
+                return next((agent for agent in agents if agent.name == "HumanAgent"), None)
+            elif last_sender == "HumanAgent":
+                # After human feedback, the specific agent for the step should proceed
+                # For simplicity, use GenericAgent as fallback
+                return next((agent for agent in agents if agent.name == "GenericAgent"), None)
+            elif last_sender == "GroupChatManager":
+                # If the manager just assigned a step, find the agent that should execute it
+                # For simplicity, just rotate to the next agent
+                agent_names = [agent.name for agent in agents]
+                try:
+                    current_index = agent_names.index(last_sender)
+                    next_index = (current_index + 1) % len(agents)
                     return agents[next_index]
-                    
-                case _:
-                    # Default to the Group Chat Manager to coordinate next steps
-                    return next((agent for agent in agents if agent.name == "GroupChatManager"), None)
-    
+                except ValueError:
+                    return agents[0] if agents else None
+            else:
+                # Default to the Group Chat Manager
+                return next((agent for agent in agents if agent.name == "GroupChatManager"), 
+                           agents[0] if agents else None)
+
     class PlanTerminationStrategy(TerminationStrategy):
         """Strategy for determining when the agent group chat should terminate.
         
@@ -154,23 +177,29 @@ class GroupChatManager:
                 maximum_iterations: Maximum number of iterations before termination
                 automatic_reset: Whether to reset the agent after termination
             """
-            super().__init__(agents, maximum_iterations, automatic_reset)
+            super().__init__(maximum_iterations, automatic_reset)
+            self._agents = agents
         
-        async def should_agent_terminate(self, agent, history):
-            """Check if the agent should terminate.
+        async def should_terminate(self, history, agents=None) -> bool:
+            """Check if the chat should terminate.
             
             Args:
-                agent: The current agent
-                history: Chat history
+                history: Chat history as a ChatHistory object
+                agents: List of agents (optional, uses self._agents if not provided)
                 
             Returns:
-                True if the agent should terminate, False otherwise
+                True if the chat should terminate, False otherwise
             """
-            # Default termination conditions
-            if not history:
+            # Default termination conditions from parent class
+            if await super().should_terminate(history, agents or self._agents):
+                return True
+                
+            # If no history, continue the chat
+            if not history or not history.messages:
                 return False
             
-            last_message = history[-1]
+            # Get the last message
+            last_message = history.messages[-1]
             
             # End the chat if the plan is completed or if human intervention is required
             if "plan completed" in last_message.content.lower():
@@ -469,35 +498,72 @@ class GroupChatManager:
         await self.initialize_group_chat()
         
         try:
-            # Run the group chat
-            chat_result = await self._agent_group_chat.invoke_async(user_input)
+            # Run the group chat with Semantic Kernel
+            result = await self._agent_group_chat.invoke_async(user_input)
             
-            # Process and store results
-            messages = chat_result.value
+            # Process the result which could be a ChatHistory object or something else
+            if hasattr(result, "messages") and result.messages:
+                messages = result.messages
+            elif hasattr(result, "value") and isinstance(result.value, list):
+                messages = result.value
+            else:
+                # Fallback for other formats
+                messages = []
+                if isinstance(result, str):
+                    # If it's just a string response
+                    logging.debug(f"Group chat returned a string: {result[:100]}...")
+                    await self._memory_store.add_item(
+                        AgentMessage(
+                            session_id=self._session_id,
+                            user_id=self._user_id,
+                            plan_id=plan_id,
+                            content=result,
+                            source="GroupChatManager",
+                            step_id=step_id,
+                        )
+                    )
+                    return result
+            
+            # Process the messages from the chat result
+            final_response = None
+            
             for msg in messages:
                 # Skip the initial user message
-                if msg.role == "user" and msg.content == user_input:
+                if hasattr(msg, "role") and msg.role == "user" and msg.content == user_input:
                     continue
-                    
-                # Store agent messages in the memory
+                
+                # Determine the source/agent name
+                source = "assistant"
+                if hasattr(msg, "name") and msg.name:
+                    source = msg.name
+                elif hasattr(msg, "role") and msg.role:
+                    source = msg.role
+                
+                # Get the message content
+                content = msg.content if hasattr(msg, "content") else str(msg)
+                
+                # Store the message in memory
                 await self._memory_store.add_item(
                     AgentMessage(
                         session_id=self._session_id,
                         user_id=self._user_id,
                         plan_id=plan_id,
-                        content=msg.content,
-                        source=msg.name if hasattr(msg, "name") else msg.role,
+                        content=content,
+                        source=source,
                         step_id=step_id,
                     )
                 )
+                
+                # Keep track of the final response
+                final_response = content
             
             # Return the final message from the chat
-            if messages:
-                return messages[-1].content
+            if final_response:
+                return final_response
             return "Group chat completed with no messages."
             
         except Exception as e:
-            logging.error(f"Error running group chat: {str(e)}")
+            logging.exception(f"Error running group chat: {e}")
             return f"Error running group chat: {str(e)}"
     
     async def execute_next_step(self, session_id: str, plan_id: str) -> str:

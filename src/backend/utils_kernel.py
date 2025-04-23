@@ -96,53 +96,6 @@ async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
         logging.error(f"Error creating agents: {str(e)}")
         raise
 
-async def get_azure_ai_agent(
-    session_id: str, 
-    agent_name: str, 
-    system_prompt: str,
-    tools: List[KernelFunction] = None
-) -> AzureAIAgent:
-    """
-    Get or create an Azure AI Agent instance.
-    
-    Args:
-        session_id: The session identifier
-        agent_name: The name for the agent
-        system_prompt: The system prompt for the agent
-        tools: Optional list of tools for the agent
-        
-    Returns:
-        An Azure AI Agent instance
-    """
-    cache_key = f"{session_id}_{agent_name}"
-    
-    if session_id in azure_agent_instances and cache_key in azure_agent_instances[session_id]:
-        agent = azure_agent_instances[session_id][cache_key]
-        # Add any new tools if provided
-        if tools:
-            for tool in tools:
-                agent.add_function(tool)
-        return agent
-    
-    try:
-        # Create the agent using the factory
-        agent = await AgentFactory.create_azure_ai_agent(
-            agent_name=agent_name,
-            session_id=session_id,
-            system_prompt=system_prompt,
-            tools=tools
-        )
-        
-        # Cache the agent
-        if session_id not in azure_agent_instances:
-            azure_agent_instances[session_id] = {}
-        azure_agent_instances[session_id][cache_key] = agent
-        
-        return agent
-    except Exception as e:
-        logging.error(f"Error creating Azure AI Agent '{agent_name}': {str(e)}")
-        raise
-
 async def retrieve_all_agent_tools() -> List[Dict[str, Any]]:
     """
     Retrieves all agent tools information.
