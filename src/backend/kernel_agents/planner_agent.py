@@ -128,12 +128,7 @@ class PlannerAgent(BaseAgent):
         # Parse the input task
         logging.info("Handling input task")
 
-        logging.info(f"Parsed input task: {input_task}")
-        
-        # Generate a structured plan with steps
-        
-        logging.info(f"Received input task: {input_task.description}")
-        logging.info(f"Session ID: {input_task.session_id}, User ID: {self._user_id}")
+
         plan, steps = await self._create_structured_plan(input_task)
 
         logging.info(f"Plan created: {plan}")
@@ -268,16 +263,9 @@ class PlannerAgent(BaseAgent):
         """
         try:
             # Generate the instruction for the LLM
-            logging.info("Generating instruction for the LLM")
-            logging.debug(f"Input: {input_task}")
-            logging.debug(f"Available agents: {self._available_agents}")
 
             instruction = self._generate_instruction(input_task.description)
             
-            logging.info(f"Generated instruction: {instruction}")   
-            # Log the input task for debugging
-            logging.info(f"Creating plan for task: '{input_task.description}'")
-            logging.info(f"Using available agents: {self._available_agents}")
             
             # Use the Azure AI Agent instead of direct function invocation
             if self._azure_ai_agent is None:
@@ -587,47 +575,71 @@ class PlannerAgent(BaseAgent):
         # Create a list of available agents
         agents_str = ", ".join(self._available_agents)
         
-        # Create list of available tools
-        # If _agent_tools_list is empty but we have agent instances available elsewhere,
-        # we should retrieve tools directly from agent instances
-        tools_str = ""
+        # Create list of available tools in JSON-like format
+        tools_list = []
+        
+        # Check if we have agent instances to extract tools from
         if hasattr(self, '_agent_instances') and self._agent_instances:
-            # Extract tools from agent instances
-            agent_tools_sections = []
-            
             # Process each agent to get their tools
             for agent_name, agent in self._agent_instances.items():
                 if hasattr(agent, '_tools') and agent._tools:
-                    # Create a section header for this agent
-                    agent_tools_sections.append(f"### {agent_name} Tools ###")
-                    
                     # Add each tool from this agent
                     for tool in agent._tools:
                         if hasattr(tool, 'name') and hasattr(tool, 'description'):
-                            tool_desc = f"Agent: {agent_name} - Function: {tool.name} - {tool.description}"
-                            agent_tools_sections.append(tool_desc)
-                    
-                    # Add a blank line after each agent's tools
-                    agent_tools_sections.append("")
+                            # Extract function parameters/arguments
+                            args_dict = {}
+                            if hasattr(tool, 'parameters'):
+                                for param in tool.parameters:
+                                    param_type = "string"  # Default type
+                                    if hasattr(param, 'type'):
+                                        param_type = param.type
+                                    
+                                    args_dict[param.name] = {
+                                        'description': param.description,
+                                        'title': param.name.replace('_', ' ').title(),
+                                        'type': param_type
+                                    }
+                            
+                            # Create tool entry
+                            tool_entry = {
+                                'agent': agent_name,
+                                'function': tool.name,
+                                'description': tool.description,
+                                'arguments': str(args_dict)
+                            }
+                            
+                            tools_list.append(tool_entry)
             
-            # Join all sections
-            if agent_tools_sections:
-                tools_str = "\n".join(agent_tools_sections)
-                # Log the tools for debugging
-                logging.debug(f"Generated tools list from agent instances with {len(agent_tools_sections)} entries")
-            else:
-                tools_str = "Various specialized tools (No tool details available from agent instances)"
-                logging.warning("No tools found in agent instances")
-        elif self._agent_tools_list:
-            # Fall back to the existing tools list if available
-            tools_str = "\n".join(self._agent_tools_list)
-            logging.debug(f"Using existing agent_tools_list with {len(self._agent_tools_list)} entries")
-        else:
-            # Default fallback
-            tools_str = "Various specialized tools"
-            logging.warning("No tools information available for planner instruction")
+            logging.debug(f"Generated {len(tools_list)} tools from agent instances")
         
-        # Build the instruction, avoiding backslashes in f-string expressions
+        # If we couldn't extract tools from agent instances, create a simplified format
+        if not tools_list:
+            logging.warning("No tool details extracted from agent instances, creating simplified format")
+            if self._agent_tools_list:
+                # Create dummy entries from the existing tool list strings
+                for tool_str in self._agent_tools_list:
+                    if ":" in tool_str:
+                        parts = tool_str.split(":")
+                        if len(parts) >= 2:
+                            agent_part = parts[0].strip()
+                            function_part = parts[1].strip()
+                            
+                            # Extract agent name if format is "Agent: AgentName"
+                            agent_name = agent_part.replace("Agent", "").strip()
+                            if not agent_name:
+                                agent_name = "GenericAgent"
+                                
+                            tools_list.append({
+                                'agent': agent_name,
+                                'function': function_part,
+                                'description': f"Function {function_part} from {agent_name}",
+                                'arguments': "{}"
+                            })
+        
+        # Convert the tools list to a string representation
+        tools_str = str(tools_list)
+        
+        # Build the instruction, avoiding backslashes in f-string expressions  
         objective_part = f"Your objective is:\n{objective}" if objective else "When given an objective, analyze it and create a plan to accomplish it."
         
         return f"""
