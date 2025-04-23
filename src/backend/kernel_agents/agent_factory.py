@@ -25,8 +25,12 @@ from kernel_agents.planner_agent import PlannerAgent  # Add PlannerAgent import
 from kernel_agents.group_chat_manager import GroupChatManager
 from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from models.messages_kernel import PlannerResponsePlan
 
-
+from azure.ai.projects.models import (
+    ResponseFormatJsonSchema,
+    ResponseFormatJsonSchemaType,
+)
 logger = logging.getLogger(__name__)
 
 
@@ -348,7 +352,14 @@ Provide a helpful response."""
             session_id=session_id,
             user_id=user_id,
             temperature=temperature,
-            agent_instances=agent_instances  # Pass agent instances to the planner
+            agent_instances=agent_instances,  # Pass agent instances to the planner
+            response_format=ResponseFormatJsonSchemaType(
+                    json_schema=ResponseFormatJsonSchema(
+            name=PlannerResponsePlan.__name__,
+            description=f"respond with {PlannerResponsePlan.__name__.lower()}",
+            schema=PlannerResponsePlan.model_json_schema(),
+        )
+    )
         )
         agents[planner_agent_type] = planner_agent
         

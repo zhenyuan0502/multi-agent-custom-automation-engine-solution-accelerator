@@ -40,15 +40,15 @@ from event_utils import track_event_if_configured
 from models.agent_types import AgentType
 from kernel_agents.agent_factory import AgentFactory
 
-# Check if the Application Insights Instrumentation Key is set in the environment variables
-instrumentation_key = os.getenv("APPLICATIONINSIGHTS_INSTRUMENTATION_KEY")
-if instrumentation_key:
-    # Configure Application Insights if the Instrumentation Key is found
-    configure_azure_monitor(connection_string=instrumentation_key)
-    logging.info("Application Insights configured with the provided Instrumentation Key")
-else:
-    # Log a warning if the Instrumentation Key is not found
-    logging.warning("No Application Insights Instrumentation Key found. Skipping configuration")
+# # Check if the Application Insights Instrumentation Key is set in the environment variables
+# instrumentation_key = os.getenv("APPLICATIONINSIGHTS_INSTRUMENTATION_KEY")
+# if instrumentation_key:
+#     # Configure Application Insights if the Instrumentation Key is found
+#     configure_azure_monitor(connection_string=instrumentation_key)
+#     logging.info("Application Insights configured with the provided Instrumentation Key")
+# else:
+#     # Log a warning if the Instrumentation Key is not found
+#     logging.warning("No Application Insights Instrumentation Key found. Skipping configuration")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -59,10 +59,10 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
 )
 logging.getLogger("azure.identity.aio._internal").setLevel(logging.WARNING)
 
-# Suppress info logs from OpenTelemetry exporter
-logging.getLogger("azure.monitor.opentelemetry.exporter.export._base").setLevel(
-    logging.WARNING
-)
+# # Suppress info logs from OpenTelemetry exporter
+# logging.getLogger("azure.monitor.opentelemetry.exporter.export._base").setLevel(
+#     logging.WARNING
+# )
 
 # Initialize the FastAPI app
 app = FastAPI()
@@ -132,9 +132,10 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
         input_task_data["user_id"] = user_id
         input_task_json = json.dumps(input_task_data)
         
+        logging.info(f"Input task: {input_task}")
         # Use the planner to handle the task
         result = await planner_agent.handle_input_task(
-            KernelArguments(input_task_json=input_task_json)
+            input_task
         )
         
         print(f"Result: {result}")
