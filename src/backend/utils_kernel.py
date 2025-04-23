@@ -96,62 +96,6 @@ async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
         logging.error(f"Error creating agents: {str(e)}")
         raise
 
-async def retrieve_all_agent_tools() -> List[Dict[str, Any]]:
-    """
-    Retrieves all agent tools information.
-    
-    Returns:
-        List of dictionaries containing tool information
-    """
-    functions = []
-    
-    try:
-        # Create a temporary session for tool discovery
-        temp_session_id = "tools-discovery-session"
-        temp_user_id = "tools-discovery-user"
-        
-        # Create all agents for this session to extract their tools
-        agents = await get_agents(temp_session_id, temp_user_id)
-        
-        # Process each agent's tools
-        for agent_name, agent in agents.items():
-            if not hasattr(agent, '_tools') or agent._tools is None:
-                continue
-                
-            # Make agent name more readable for display
-            display_name = agent_name.replace('Agent', '')
-            
-            # Extract tool information from the agent
-            for tool in agent._tools:
-                try:
-                    # Extract parameters information
-                    parameters_info = {}
-                    if hasattr(tool, 'metadata') and tool.metadata.get('parameters'):
-                        parameters_info = tool.metadata.get('parameters', {})
-                    
-                    # Create tool info dictionary
-                    tool_info = {
-                        "agent": display_name,
-                        "function": tool.name,
-                        "description": tool.description if hasattr(tool, 'description') and tool.description else "",
-                        "parameters": str(parameters_info)
-                    }
-                    functions.append(tool_info)
-                except Exception as e:
-                    logging.warning(f"Error extracting tool information from {agent_name}.{tool.name}: {str(e)}")
-        
-        # Clean up cache
-        cache_key = f"{temp_session_id}_{temp_user_id}"
-        if cache_key in agent_instances:
-            del agent_instances[cache_key]
-        
-    except Exception as e:
-        logging.error(f"Error retrieving agent tools: {str(e)}")
-        # Fallback to loading tool information from JSON files
-        functions = load_tools_from_json_files()
-    
-    return functions
-
 def load_tools_from_json_files() -> List[Dict[str, Any]]:
     """
     Load tool definitions from JSON files in the tools directory.

@@ -47,6 +47,27 @@ from models.agent_types import AgentType
 from event_utils import track_event_if_configured
 
 
+class GroupChatManagerClass:
+    """A class for service compatibility with Semantic Kernel."""
+    # Defining properties needed by Semantic Kernel
+    service_id = ""
+    
+    def __init__(self, manager):
+        self.manager = manager
+        self.service_id = f"group_chat_manager_{manager._session_id}"
+    
+    async def execute_next_step(self, kernel_arguments: KernelArguments) -> str:
+        """Execute the next step in the plan.
+        
+        Args:
+            kernel_arguments: KernelArguments that should contain session_id and plan_id
+            
+        Returns:
+            Status message
+        """
+        return await self.manager.execute_next_step(kernel_arguments)
+
+
 class GroupChatManager:
     """Group Chat Manager implementation using Semantic Kernel's AgentGroupChat.
     
@@ -83,6 +104,27 @@ class GroupChatManager:
         # Initialize the AgentGroupChat later when all agents are registered
         self._agent_group_chat = None
         self._initialized = False
+        
+        # Create a wrapper class for service registration
+        service_wrapper = GroupChatManagerClass(self)
+        
+        try:
+            # Register with kernel using the service_wrapper
+            if hasattr(kernel, "register_services"):
+                kernel.register_services({service_wrapper.service_id: service_wrapper})
+                logging.info(f"Registered GroupChatManager as kernel service with ID: {service_wrapper.service_id}")
+            elif hasattr(kernel, "services") and hasattr(kernel.services, "register_service"):
+                kernel.services.register_service(service_wrapper.service_id, service_wrapper)
+                logging.info(f"Registered GroupChatManager as kernel service with ID: {service_wrapper.service_id}")
+            elif hasattr(kernel, "services") and isinstance(kernel.services, dict):
+                # Last resort: directly add to services dictionary
+                kernel.services[service_wrapper.service_id] = service_wrapper
+                logging.info(f"Added GroupChatManager to kernel services dictionary with ID: {service_wrapper.service_id}")
+            else:
+                logging.warning("Could not register GroupChatManager service. Semantic Kernel version might be incompatible.")
+        except Exception as e:
+            logging.error(f"Error registering GroupChatManager service: {e}")
+            # Continue without crashing
 
     async def initialize_group_chat(self) -> None:
         """Initialize the AgentGroupChat with registered agents and strategies."""
@@ -566,16 +608,22 @@ class GroupChatManager:
             logging.exception(f"Error running group chat: {e}")
             return f"Error running group chat: {str(e)}"
     
-    async def execute_next_step(self, session_id: str, plan_id: str) -> str:
+    async def execute_next_step(self, kernel_arguments: KernelArguments) -> str:
         """Execute the next step in the plan.
         
         Args:
-            session_id: The session identifier
-            plan_id: The plan identifier
+            kernel_arguments: KernelArguments that should contain session_id and plan_id
             
         Returns:
             Status message
         """
+        # Extract arguments
+        session_id = kernel_arguments.get("session_id", "")
+        plan_id = kernel_arguments.get("plan_id", "")
+        
+        if not session_id or not plan_id:
+            return "Missing session_id or plan_id in arguments"
+        
         # Get all steps for the plan
         steps = await self._memory_store.get_steps_for_plan(plan_id, session_id)
         

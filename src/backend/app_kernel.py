@@ -35,7 +35,7 @@ from models.messages_kernel import (
     ActionRequest,
     ActionResponse,
 )
-from utils_kernel import initialize_runtime_and_context, get_agents, retrieve_all_agent_tools, rai_success
+from utils_kernel import initialize_runtime_and_context, get_agents, rai_success
 from event_utils import track_event_if_configured
 from models.agent_types import AgentType
 from kernel_agents.agent_factory import AgentFactory
@@ -819,7 +819,7 @@ async def get_agent_tools():
                 type: string
                 description: Arguments required by the tool function
     """
-    return retrieve_all_agent_tools()
+    return []
 
 
 # Initialize the application when it starts
