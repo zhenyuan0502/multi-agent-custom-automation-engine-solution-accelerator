@@ -3,7 +3,13 @@ import os
 import logging
 import semantic_kernel as sk
 from semantic_kernel.kernel import Kernel
-from semantic_kernel.contents import ChatHistory
+# Updated imports for compatibility
+try:
+    # Try newer structure
+    from semantic_kernel.contents import ChatHistory
+except ImportError:
+    # Fall back to older structure for compatibility
+    from semantic_kernel.connectors.ai.chat_completion_client import ChatHistory
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
 # Import AppConfig from app_config
@@ -54,26 +60,3 @@ class Config:
     def GetAIProjectClient():
         """Get an AIProjectClient using the AppConfig implementation."""
         return config.get_ai_project_client()
-    
-    @staticmethod
-    async def CreateAzureAIAgent(
-        kernel: Kernel, 
-        agent_name: str, 
-        instructions: str, 
-        agent_type: str = "assistant", 
-        tools=None,
-        tool_resources=None,
-        response_format=None,
-        temperature: float = 0.0
-    ):
-        """Creates a new Azure AI Agent using the AppConfig implementation."""
-        return await config.create_azure_ai_agent(
-            kernel=kernel,
-            agent_name=agent_name,
-            instructions=instructions,
-            agent_type=agent_type,
-            tools=tools,
-            tool_resources=tool_resources,
-            response_format=response_format,
-            temperature=temperature
-        )

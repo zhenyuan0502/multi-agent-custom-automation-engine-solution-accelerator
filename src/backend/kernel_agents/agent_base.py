@@ -9,6 +9,24 @@ from semantic_kernel.functions.kernel_function_decorator import kernel_function
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
+# Updated imports for compatibility
+try:
+    # Try importing from newer structure first
+    from semantic_kernel.contents import ChatMessageContent, ChatHistory
+except ImportError:
+    # Fall back to older structure for compatibility
+    class ChatMessageContent:
+        """Compatibility class for older SK versions."""
+        def __init__(self, role="", content="", name=None):
+            self.role = role
+            self.content = content
+            self.name = name
+
+    class ChatHistory:
+        """Compatibility class for older SK versions."""
+        def __init__(self):
+            self.messages = []
+
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
     ActionRequest,
@@ -64,6 +82,7 @@ class BaseAgent(AzureAIAgent):
         else:
             tools = tools or []
         system_message = system_message or self._default_system_message(agent_name)
+        
         # Call AzureAIAgent constructor with required client and definition
         super().__init__(
             kernel=kernel,
@@ -76,6 +95,8 @@ class BaseAgent(AzureAIAgent):
             client=client,
             definition=definition
         )
+        
+        # Store instance variables
         self._agent_name = agent_name
         self._kernel = kernel
         self._session_id = session_id
@@ -84,8 +105,14 @@ class BaseAgent(AzureAIAgent):
         self._tools = tools
         self._system_message = system_message
         self._chat_history = [{"role": "system", "content": self._system_message}]
+        self._agent = None  # Will be initialized in async_init
+        
+        # Required properties for AgentGroupChat compatibility
+        self.name = agent_name  # This is crucial for AgentGroupChat to identify agents
+        
         # Log initialization
         logging.info(f"Initialized {agent_name} with {len(self._tools)} tools")
+        
         # Register the handler functions
         self._register_functions()
 
@@ -107,6 +134,53 @@ class BaseAgent(AzureAIAgent):
         # Tools are registered with the kernel via get_tools_from_config
         return self
 
+    async def invoke_async(self, *args, **kwargs):
+        """Invoke this agent asynchronously.
+        
+        This method is required for compatibility with AgentGroupChat.
+        
+        Args:
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+            
+        Returns:
+            The agent's response
+        """
+        # Ensure agent is initialized
+        if self._agent is None:
+            await self.async_init()
+            
+        # Get the text input from args or kwargs
+        text = None
+        if args and isinstance(args[0], str):
+            text = args[0]
+        elif "text" in kwargs:
+            text = kwargs["text"]
+        elif "arguments" in kwargs and hasattr(kwargs["arguments"], "get"):
+            text = kwargs["arguments"].get("text") or kwargs["arguments"].get("input")
+        
+        if not text:
+            settings = kwargs.get("settings", {})
+            if isinstance(settings, dict) and "input" in settings:
+                text = settings["input"]
+        
+        # If text is still not found, create a default message
+        if not text:
+            text = "Hello, please assist with a task."
+            
+        # Use the text to invoke the agent
+        try:
+            logging.info(f"Invoking {self._agent_name} with text: {text[:100]}...")
+            response = await self._agent.invoke(
+                self._kernel, 
+                text,
+                settings=kwargs.get("settings", {})
+            )
+            return response
+        except Exception as e:
+            logging.error(f"Error invoking {self._agent_name}: {e}")
+            return f"Error: {str(e)}"
+
     def _register_functions(self):
         """Register this agent's functions with the kernel."""
         # Use the kernel function decorator approach instead of from_native_method
@@ -126,6 +200,37 @@ class BaseAgent(AzureAIAgent):
         kernel_func = KernelFunction.from_method(handle_action_request_wrapper)
         # Use agent name as plugin for handler
         self._kernel.add_function(self._agent_name, kernel_func)
+        
+    # Required method for AgentGroupChat compatibility
+    async def send_message_async(self, message_content: ChatMessageContent, chat_history: ChatHistory):
+        """Send a message to the agent asynchronously, adding it to chat history.
+        
+        Args:
+            message_content: The content of the message
+            chat_history: The chat history
+            
+        Returns:
+            None
+        """
+        # Convert message to format expected by the agent
+        if hasattr(message_content, "role") and hasattr(message_content, "content"):
+            self._chat_history.append({
+                "role": message_content.role,
+                "content": message_content.content
+            })
+        
+        # If chat history is provided, update our internal history
+        if chat_history and hasattr(chat_history, "messages"):
+            # Update with the latest messages from chat history
+            for msg in chat_history.messages[-5:]:  # Only use last 5 messages to avoid history getting too long
+                if msg not in self._chat_history:
+                    self._chat_history.append({
+                        "role": msg.role, 
+                        "content": msg.content
+                    })
+        
+        # No need to return anything as we're just updating state
+        return None
 
     async def handle_action_request(self, action_request_json: str) -> str:
         """Handle an action request from another agent or the system.

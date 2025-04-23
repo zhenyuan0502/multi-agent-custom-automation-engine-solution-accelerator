@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.functions.kernel_arguments import KernelArguments
-from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
@@ -16,6 +15,7 @@ from models.messages_kernel import (
     AgentMessage,
     InputTask,
     Plan,
+    PlannerResponsePlan,
     Step,
     StepStatus,
     PlanStatus,
@@ -24,16 +24,6 @@ from models.messages_kernel import (
 from event_utils import track_event_if_configured
 from app_config import config
 
-# Define structured output models
-class StructuredOutputStep(BaseModel):
-    action: str = Field(description="Detailed description of the step action")
-    agent: str = Field(description="Name of the agent to execute this step")
-
-class StructuredOutputPlan(BaseModel):
-    initial_goal: str = Field(description="The goal of the plan")
-    steps: List[StructuredOutputStep] = Field(description="List of steps to achieve the goal")
-    summary_plan_and_steps: str = Field(description="Brief summary of the plan and steps")
-    human_clarification_request: Optional[str] = Field(None, description="Any additional information needed from the human")
 
 class PlannerAgent(BaseAgent):
     """Planner agent implementation using Semantic Kernel.
@@ -126,7 +116,7 @@ class PlannerAgent(BaseAgent):
             logging.error(f"Failed to create Azure AI Agent for PlannerAgent: {e}")
             raise
         
-    async def handle_input_task(self, kernel_arguments: KernelArguments) -> str:
+    async def handle_input_task(self, input_task: InputTask) -> str:
         """Handle the initial input task from the user.
         
         Args:
@@ -136,15 +126,19 @@ class PlannerAgent(BaseAgent):
             Status message
         """
         # Parse the input task
-        input_task_json = kernel_arguments["input_task_json"]
-        input_task = InputTask.parse_raw(input_task_json)
+        logging.info("Handling input task")
+
+        logging.info(f"Parsed input task: {input_task}")
         
         # Generate a structured plan with steps
+        
+        logging.info(f"Received input task: {input_task.description}")
+        logging.info(f"Session ID: {input_task.session_id}, User ID: {self._user_id}")
         plan, steps = await self._create_structured_plan(input_task)
 
-        print(f"Plan created: {plan}")
+        logging.info(f"Plan created: {plan}")
+        logging.info(f"Steps created: {steps}")
 
-        print(f"Steps created: {steps}")
 
         
         if steps:
@@ -274,8 +268,13 @@ class PlannerAgent(BaseAgent):
         """
         try:
             # Generate the instruction for the LLM
+            logging.info("Generating instruction for the LLM")
+            logging.debug(f"Input: {input_task}")
+            logging.debug(f"Available agents: {self._available_agents}")
+
             instruction = self._generate_instruction(input_task.description)
             
+            logging.info(f"Generated instruction: {instruction}")   
             # Log the input task for debugging
             logging.info(f"Creating plan for task: '{input_task.description}'")
             logging.info(f"Using available agents: {self._available_agents}")
@@ -295,17 +294,17 @@ class PlannerAgent(BaseAgent):
             kernel_args = KernelArguments()
             kernel_args["input"] = f"TASK: {input_task.description}\n\n{instruction}"
             
-            print(f"Kernel arguments: {kernel_args}")
+            logging.debug(f"Kernel arguments: {kernel_args}")
 
             # Call invoke with proper keyword arguments
             response_content = ""
             
-            # Use keyword arguments instead of positional arguments
-            # Set a lower temperature to ensure consistent results
+            # Ensure we're using the right pattern for Azure AI agents with semantic kernel
+            # Properly handle async generation
             async_generator = self._azure_ai_agent.invoke(
                 arguments=kernel_args,
                 settings={
-                    "temperature": 0.0
+                    "temperature": 0.0,  # Keep temperature low for consistent planning
                 }
             )
             
@@ -314,13 +313,8 @@ class PlannerAgent(BaseAgent):
                 if chunk is not None:
                     response_content += str(chunk)
             
-            print(f"Response content: {response_content}")
-            
-            # Debug the response
-            logging.info(f"Response content length: {len(response_content)}")
-            logging.debug(f"Response content first 500 chars: {response_content[:500]}")
-            # Log more of the response for debugging
-            logging.info(f"Full response: {response_content}")
+
+            logging.info(f"Response content: {response_content}")
             
             # Check if response is empty or whitespace
             if not response_content or response_content.isspace():
@@ -330,7 +324,7 @@ class PlannerAgent(BaseAgent):
             try:
                 # First try to parse using Pydantic model
                 try:
-                    parsed_result = StructuredOutputPlan.parse_raw(response_content)
+                    parsed_result = PlannerResponsePlan.parse_raw(response_content)
                 except Exception as e1:
                     logging.warning(f"Failed to parse direct JSON with Pydantic: {str(e1)}")
                     
@@ -340,12 +334,12 @@ class PlannerAgent(BaseAgent):
                         json_content = json_match.group(1)
                         logging.info(f"Found JSON content in markdown code block, length: {len(json_content)}")
                         try:
-                            parsed_result = StructuredOutputPlan.parse_raw(json_content)
+                            parsed_result = PlannerResponsePlan.parse_raw(json_content)
                         except Exception as e2:
                             logging.warning(f"Failed to parse extracted JSON with Pydantic: {str(e2)}")
                             # Try conventional JSON parsing as fallback
                             json_data = json.loads(json_content)
-                            parsed_result = StructuredOutputPlan.parse_obj(json_data)
+                            parsed_result = PlannerResponsePlan.parse_obj(json_data)
                     else:
                         # Try to extract JSON without code blocks - maybe it's embedded in text
                         # Look for patterns like { ... } that contain "initial_goal" and "steps"
@@ -357,12 +351,12 @@ class PlannerAgent(BaseAgent):
                             logging.info(f"Found potential JSON in text, length: {len(potential_json)}")
                             try:
                                 json_data = json.loads(potential_json)
-                                parsed_result = StructuredOutputPlan.parse_obj(json_data)
+                                parsed_result = PlannerResponsePlan.parse_obj(json_data)
                             except Exception as e3:
                                 logging.warning(f"Failed to parse potential JSON: {str(e3)}")
                                 # If all extraction attempts fail, try parsing the whole response as JSON
                                 json_data = json.loads(response_content)
-                                parsed_result = StructuredOutputPlan.parse_obj(json_data)
+                                parsed_result = PlannerResponsePlan.parse_obj(json_data)
                         else:
                             # If we can't find JSON patterns, create a fallback plan from the text
                             logging.info("Using fallback plan creation from text response")
@@ -680,23 +674,5 @@ class PlannerAgent(BaseAgent):
         Limit the plan to 6 steps or less.
 
         Choose from {agents_str} ONLY for planning your steps.
-        
-        When generating the action in the plan, frame the action as an instruction you are passing to the agent to execute. It should be a short, single sentence. Include the function to use. For example, "Set up an Office 365 Account for Jessica Smith. Function: set_up_office_365_account"
 
-        Ensure the summary of the plan and the overall steps is less than 50 words.
-
-        Identify any additional information that might be required to complete the task. Include this information in the plan in the human_clarification_request field of the plan. If it is not required, leave it as null. Do not include information that you are waiting for clarification on in the string of the action field, as this otherwise won't get updated.
-        
-        Return your response as a JSON object with the following structure:
-        {{
-          "initial_goal": "The goal of the plan",
-          "steps": [
-            {{
-              "action": "Detailed description of the step action",
-              "agent": "AgentName"
-            }}
-          ],
-          "summary_plan_and_steps": "Brief summary of the plan and steps",
-          "human_clarification_request": "Any additional information needed from the human" 
-        }}
         """

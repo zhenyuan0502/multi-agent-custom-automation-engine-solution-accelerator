@@ -393,6 +393,18 @@ class SKChatHistory:
         # This assumes your memory store has a method to delete a collection
         await self.memory_store.delete_collection_async(f"message_{session_id}")
 
+
+# Define the expected structure of the LLM response
+class PlannerResponseStep(KernelBaseModel):
+    action: str
+    agent:  AgentType
+
+class PlannerResponsePlan(KernelBaseModel):
+    initial_goal: str
+    steps: List[PlannerResponseStep]
+    summary_plan_and_steps: str
+    human_clarification_request: Optional[str] = None
+
 # Helper class for Semantic Kernel function calling
 class SKFunctionRegistry:
     """Helper class to register and execute functions in Semantic Kernel."""
