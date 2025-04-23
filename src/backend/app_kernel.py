@@ -115,17 +115,17 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
     if not input_task.session_id:
         input_task.session_id = str(uuid.uuid4())
     
-    # Fix 2: Don't try to set user_id on InputTask directly since it doesn't have that field
-    # Instead, include it in the JSON we'll pass to the planner
-    
     try:
-        # Create just the planner agent instead of all agents
+        # Create all agents instead of just the planner agent
+        # This ensures other agents are created first and the planner has access to them
         kernel, memory_store = await initialize_runtime_and_context(input_task.session_id, user_id)
-        planner_agent = await AgentFactory.create_agent(
-            agent_type=AgentType.PLANNER, 
-            session_id=input_task.session_id, 
+        agents = await AgentFactory.create_all_agents(
+            session_id=input_task.session_id,
             user_id=user_id
         )
+        
+        # Get the planner agent from the created agents
+        planner_agent = agents[AgentType.PLANNER]
         
         # Convert input task to JSON for the kernel function, add user_id here
         input_task_data = input_task.model_dump()
@@ -137,8 +137,11 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
             KernelArguments(input_task_json=input_task_json)
         )
         
+        print(f"Result: {result}")
         # Get plan from memory store
         plan = await memory_store.get_plan_by_session(input_task.session_id)
+
+        print(f"Plan: {plan}")
         
         if not plan or not plan.id:
             # If plan not found by session, try to extract plan ID from result
@@ -188,7 +191,6 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
             }
         )
         raise HTTPException(status_code=400, detail="Error creating plan")
-
 
 
 @app.post("/human_feedback")
