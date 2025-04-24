@@ -144,25 +144,6 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
 
         print(f"Plan: {plan}")
         
-        if not plan or not plan.id:
-            # If plan not found by session, try to extract plan ID from result
-            plan_id_match = re.search(r"Plan '([^']+)'", result)
-            
-            if plan_id_match:
-                plan_id = plan_id_match.group(1)
-                plan = await memory_store.get_plan(plan_id)
-            
-            # If still no plan found, handle the failure
-            if not plan or not plan.id:
-                track_event_if_configured(
-                    "PlanCreationFailed", 
-                    {
-                        "session_id": input_task.session_id,
-                        "description": input_task.description,
-                    }
-                )
-                raise HTTPException(status_code=400, detail="Error: Failed to create plan")
-        
         # Log custom event for successful input task processing
         track_event_if_configured(
             "InputTaskProcessed",
