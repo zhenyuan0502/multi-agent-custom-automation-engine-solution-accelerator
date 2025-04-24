@@ -2,6 +2,7 @@ import logging
 import uuid
 import json
 import re
+import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from pydantic import BaseModel, Field
 
@@ -93,6 +94,48 @@ class PlannerAgent(BaseAgent):
         # Create the Azure AI Agent for planning operations
         # This will be initialized in async_init
         self._azure_ai_agent = None
+
+    def _get_response_format_schema(self) -> dict:
+        """
+        Returns a JSON schema that defines the expected structure of the response.
+        This ensures responses from the agent will match the required format exactly.
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "initial_goal": {
+                    "type": "string",
+                    "description": "The primary goal extracted from the user's input task"
+                },
+                "steps": {
+                    "type": "array",
+                    "description": "List of steps required to complete the task",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "action": {
+                                "type": "string",
+                                "description": "A clear instruction for the agent including the function name to use"
+                            },
+                            "agent": {
+                                "type": "string",
+                                "description": "The name of the agent responsible for this step"
+                            }
+                        },
+                        "required": ["action", "agent"]
+                    }
+                },
+                "summary_plan_and_steps": {
+                    "type": "string",
+                    "description": "A concise summary of the overall plan and its steps in less than 50 words"
+                },
+                "human_clarification_request": {
+                    "type": ["string", "null"],
+                    "description": "Optional request for additional information needed from the user"
+                }
+            },
+            "required": ["initial_goal", "steps", "summary_plan_and_steps"]
+        }
         
     async def async_init(self) -> None:
         """Asynchronously initialize the PlannerAgent.
@@ -103,6 +146,7 @@ class PlannerAgent(BaseAgent):
             None
         """
         try:
+            logging.info("Initializing PlannerAgent from async init azure AI Agent")
             # Create the Azure AI Agent using AppConfig
             self._azure_ai_agent = await config.create_azure_ai_agent(
                 kernel=self._kernel,
@@ -291,7 +335,10 @@ class PlannerAgent(BaseAgent):
             
             logging.debug(f"Kernel arguments: {kernel_args}")
 
-            # Call invoke with proper keyword arguments
+            # Get the schema for our expected response format
+            response_format_schema = self._get_response_format_schema()
+            
+            # Call invoke with proper keyword arguments and JSON response schema
             response_content = ""
             
             # Ensure we're using the right pattern for Azure AI agents with semantic kernel
@@ -300,7 +347,11 @@ class PlannerAgent(BaseAgent):
                 arguments=kernel_args,
                 settings={
                     "temperature": 0.0,  # Keep temperature low for consistent planning
-                    "max_tokens": 4096   # Ensure we have enough tokens for the full plan
+                    "max_tokens": 10096,  # Ensure we have enough tokens for the full plan
+                    "response_format": {
+                        "type": "json_object",
+                        "schema": response_format_schema
+                    }
                 }
             )
             
@@ -309,7 +360,8 @@ class PlannerAgent(BaseAgent):
                 if chunk is not None:
                     response_content += str(chunk)
             
-            logging.info(f"Response content: {response_content}")
+            logging.info(f"Response content length: {len(response_content)}")
+            logging.debug(f"Response content: {response_content[:500]}...")
             
             # Check if response is empty or whitespace
             if not response_content or response_content.isspace():
@@ -318,23 +370,57 @@ class PlannerAgent(BaseAgent):
             # Parse the JSON response directly to PlannerResponsePlan
             parsed_result = None
             
-            # Try to parse the raw response first
+            # Try various parsing approaches in sequence
             try:
-                parsed_result = PlannerResponsePlan.parse_raw(response_content)
-            except Exception as e:
-                logging.warning(f"Failed to parse raw response: {e}")
+                # 1. First attempt: Try to parse the raw response directly
+                try:
+                    parsed_result = PlannerResponsePlan.parse_raw(response_content)
+                    logging.info("Successfully parsed response with direct parsing")
+                except Exception as parse_error:
+                    logging.warning(f"Failed direct parse: {parse_error}")
+                    
+                    # 2. Try to extract JSON from markdown code blocks
+                    json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', response_content, re.DOTALL)
+                    if json_match:
+                        json_content = json_match.group(1)
+                        logging.info(f"Found JSON in code block, attempting to parse")
+                        try:
+                            parsed_result = PlannerResponsePlan.parse_raw(json_content)
+                            logging.info("Successfully parsed JSON from code block")
+                        except Exception as code_block_error:
+                            logging.warning(f"Failed to parse JSON in code block: {code_block_error}")
+                            # Try parsing as dict first, then convert to model
+                            try:
+                                json_dict = json.loads(json_content)
+                                parsed_result = PlannerResponsePlan.parse_obj(json_dict)
+                                logging.info("Successfully parsed JSON dict from code block")
+                            except Exception as dict_error:
+                                logging.warning(f"Failed to parse JSON dict from code block: {dict_error}")
+                    
+                    # 3. Look for patterns like { ... } that might contain JSON
+                    if parsed_result is None:
+                        json_pattern = r'\{.*?"initial_goal".*?"steps".*?\}'
+                        alt_match = re.search(json_pattern, response_content, re.DOTALL)
+                        if alt_match:
+                            potential_json = alt_match.group(0)
+                            logging.info(f"Found potential JSON pattern in text, attempting to parse")
+                            try:
+                                json_dict = json.loads(potential_json)
+                                parsed_result = PlannerResponsePlan.parse_obj(json_dict)
+                                logging.info("Successfully parsed JSON using regex pattern extraction")
+                            except Exception as pattern_error:
+                                logging.warning(f"Failed to parse JSON pattern: {pattern_error}")
                 
-                # Try to extract JSON from markdown code blocks
-                json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', response_content, re.DOTALL)
-                if json_match:
-                    json_content = json_match.group(1)
-                    logging.info(f"Found JSON in code block, attempting to parse")
-                    parsed_result = PlannerResponsePlan.parse_raw(json_content)
-                else:
-                    # If still not parsed, raise the error to be handled by outer exception
-                    raise ValueError(f"Failed to parse response as PlannerResponsePlan: {e}")
+                if parsed_result is None:
+                    # If all parsing attempts fail, create a fallback plan from the text content
+                    logging.warning("All JSON parsing attempts failed, creating fallback plan from text")
+                    return await self._create_fallback_plan_from_text(input_task, response_content)
+                    
+            except Exception as parsing_exception:
+                logging.exception(f"Error during parsing attempts: {parsing_exception}")
+                return await self._create_fallback_plan_from_text(input_task, response_content)
             
-            # At this point, we have a valid parsed_result or an exception was raised
+            # At this point, we have a valid parsed_result
             
             # Extract plan details
             initial_goal = parsed_result.initial_goal
@@ -355,19 +441,6 @@ class PlannerAgent(BaseAgent):
             
             # Store the plan
             await self._memory_store.add_plan(plan)
-            
-            track_event_if_configured(
-                "Planner - Initial plan and added into the cosmos",
-                {
-                    "session_id": input_task.session_id,
-                    "user_id": self._user_id,
-                    "initial_goal": initial_goal,
-                    "overall_status": PlanStatus.in_progress,
-                    "source": "PlannerAgent",
-                    "summary": summary,
-                    "human_clarification_request": human_clarification_request,
-                },
-            )
             
             # Create steps from the parsed data
             steps = []
@@ -396,36 +469,187 @@ class PlannerAgent(BaseAgent):
                 await self._memory_store.add_step(step)
                 steps.append(step)
                 
-                track_event_if_configured(
-                    "Planner - Added planned individual step into the cosmos",
-                    {
-                        "plan_id": plan.id,
-                        "action": action,
-                        "agent": agent_name,
-                        "status": StepStatus.planned,
-                        "session_id": input_task.session_id,
-                        "user_id": self._user_id,
-                        "human_approval_status": HumanFeedbackStatus.requested,
-                    },
-                )
+                try:
+                    track_event_if_configured(
+                        "Planner - Added planned individual step into the cosmos",
+                        {
+                            "plan_id": plan.id,
+                            "action": action,
+                            "agent": agent_name,
+                            "status": StepStatus.planned,
+                            "session_id": input_task.session_id,
+                            "user_id": self._user_id,
+                            "human_approval_status": HumanFeedbackStatus.requested,
+                        },
+                    )
+                except Exception as event_error:
+                    # Don't let event tracking errors break the main flow
+                    logging.warning(f"Error in event tracking: {event_error}")
             
             return plan, steps
                 
         except Exception as e:
             logging.exception(f"Error creating structured plan: {e}")
             
-            track_event_if_configured(
-                f"Planner - Error in create_structured_plan: {e}",
-                {
-                    "session_id": input_task.session_id,
-                    "user_id": self._user_id,
-                    "error": str(e),
-                    "source": "PlannerAgent",
-                },
+            # Create a fallback dummy plan when parsing fails
+            logging.info("Creating fallback dummy plan due to parsing error")
+            
+            import datetime
+            
+            # Create a dummy plan with the original task description
+            dummy_plan = Plan(
+                id=str(uuid.uuid4()),
+                session_id=input_task.session_id,
+                user_id=self._user_id,
+                initial_goal=input_task.description,
+                overall_status=PlanStatus.in_progress,
+                summary=f"Plan created for: {input_task.description}",
+                human_clarification_request=None,
+                timestamp=datetime.datetime.utcnow().isoformat()
             )
             
-            # Re-raise the exception to be handled by the calling method
-            raise
+            # Store the dummy plan
+            await self._memory_store.add_plan(dummy_plan)
+            
+            # Create a dummy step for analyzing the task
+            dummy_step = Step(
+                id=str(uuid.uuid4()),
+                plan_id=dummy_plan.id,
+                session_id=input_task.session_id,
+                user_id=self._user_id,
+                action="Analyze the task: " + input_task.description,
+                agent="GenericAgent",
+                status=StepStatus.planned,
+                human_approval_status=HumanFeedbackStatus.requested,
+                timestamp=datetime.datetime.utcnow().isoformat()
+            )
+            
+            # Store the dummy step
+            await self._memory_store.add_step(dummy_step)
+            
+            # Add a second step to request human clarification
+            clarification_step = Step(
+                id=str(uuid.uuid4()),
+                plan_id=dummy_plan.id,
+                session_id=input_task.session_id,
+                user_id=self._user_id,
+                action=f"Provide more details about: {input_task.description}",
+                agent="HumanAgent",
+                status=StepStatus.planned,
+                human_approval_status=HumanFeedbackStatus.requested,
+                timestamp=datetime.datetime.utcnow().isoformat()
+            )
+            
+            # Store the clarification step
+            await self._memory_store.add_step(clarification_step)
+            
+            # Log the event
+            try:
+                track_event_if_configured(
+                    "Planner - Created fallback dummy plan due to parsing error",
+                    {
+                        "session_id": input_task.session_id,
+                        "user_id": self._user_id,
+                        "error": str(e),
+                        "description": input_task.description,
+                        "source": "PlannerAgent",
+                    }
+                )
+            except Exception as event_error:
+                logging.warning(f"Error in event tracking during fallback: {event_error}")
+            
+            return dummy_plan, [dummy_step, clarification_step]
+            
+    async def _create_fallback_plan_from_text(self, input_task: InputTask, text_content: str) -> Tuple[Plan, List[Step]]:
+        """Create a plan from unstructured text when JSON parsing fails.
+        
+        Args:
+            input_task: The input task
+            text_content: The text content from the LLM
+            
+        Returns:
+            Tuple containing the created plan and list of steps
+        """
+        logging.info("Creating fallback plan from text content")
+        
+        # Extract goal from the text (first line or use input task description)
+        goal_match = re.search(r"(?:Goal|Initial Goal|Plan):\s*(.+?)(?:\n|$)", text_content)
+        goal = goal_match.group(1).strip() if goal_match else input_task.description
+        
+        # Create the plan
+        plan = Plan(
+            id=str(uuid.uuid4()),
+            session_id=input_task.session_id,
+            user_id=self._user_id,
+            initial_goal=goal,
+            overall_status=PlanStatus.in_progress,
+            summary=f"Plan created from {input_task.description}"
+        )
+        
+        # Store the plan
+        await self._memory_store.add_plan(plan)
+        
+        # Parse steps using regex
+        step_pattern = re.compile(r'(?:Step|)\s*(\d+)[:.]\s*\*?\*?(?:Agent|):\s*\*?([^:*\n]+)\*?[:\s]*(.+?)(?=(?:Step|)\s*\d+[:.]\s*|$)', re.DOTALL)
+        matches = step_pattern.findall(text_content)
+        
+        if not matches:
+            # Fallback to simpler pattern
+            step_pattern = re.compile(r'(\d+)[.:\)]\s*([^:]*?):\s*(.*?)(?=\d+[.:\)]|$)', re.DOTALL)
+            matches = step_pattern.findall(text_content)
+        
+        # If still no matches, look for bullet points or numbered lists
+        if not matches:
+            step_pattern = re.compile(r'[•\-*]\s*([^:]*?):\s*(.*?)(?=[•\-*]|$)', re.DOTALL)
+            bullet_matches = step_pattern.findall(text_content)
+            if bullet_matches:
+                # Convert bullet matches to our expected format (number, agent, action)
+                matches = []
+                for i, (agent_text, action) in enumerate(bullet_matches, 1):
+                    matches.append((str(i), agent_text.strip(), action.strip()))
+        
+        steps = []
+        # If we found no steps at all, create at least one generic step
+        if not matches:
+            generic_step = Step(
+                id=str(uuid.uuid4()),
+                plan_id=plan.id,
+                session_id=input_task.session_id,
+                user_id=self._user_id,
+                action=f"Process the request: {input_task.description}",
+                agent="GenericAgent",
+                status=StepStatus.planned,
+                human_approval_status=HumanFeedbackStatus.requested
+            )
+            await self._memory_store.add_step(generic_step)
+            steps.append(generic_step)
+        else:
+            for match in matches:
+                number = match[0].strip()
+                agent_text = match[1].strip()
+                action = match[2].strip()
+                
+                # Clean up agent name
+                agent = re.sub(r'\s+', '', agent_text)
+                if not agent or agent not in self._available_agents:
+                    agent = "GenericAgent"  # Default to GenericAgent if not recognized
+                
+                # Create and store the step
+                step = Step(
+                    id=str(uuid.uuid4()),
+                    plan_id=plan.id,
+                    session_id=input_task.session_id,
+                    user_id=self._user_id,
+                    action=action,
+                    agent=agent,
+                    status=StepStatus.planned,
+                    human_approval_status=HumanFeedbackStatus.requested
+                )
+                
+                await self._memory_store.add_step(step)
+                steps.append(step)
+                
+        return plan, steps
     
     def _generate_instruction(self, objective: str) -> str:
         """Generate instruction for the LLM to create a plan.
@@ -453,16 +677,55 @@ class PlannerAgent(BaseAgent):
                             # Extract function parameters/arguments
                             args_dict = {}
                             if hasattr(tool, 'parameters'):
+                                # Check if we have kernel_arguments that need to be processed
+                                has_kernel_args = any(param.name == 'kernel_arguments' for param in tool.parameters)
+                                has_kwargs = any(param.name == 'kwargs' for param in tool.parameters)
+                                
+                                # Process regular parameters first
                                 for param in tool.parameters:
+                                    # Skip kernel_arguments and kwargs as we'll handle them specially
+                                    if param.name in ['kernel_arguments', 'kwargs']:
+                                        continue
+                                    
                                     param_type = "string"  # Default type
                                     if hasattr(param, 'type'):
                                         param_type = param.type
                                     
                                     args_dict[param.name] = {
-                                        'description': param.description,
+                                        'description': param.description if param.description else param.name,
                                         'title': param.name.replace('_', ' ').title(),
                                         'type': param_type
                                     }
+                                
+                                # If we have a kernel_arguments parameter, introspect it to extract its values
+                                # This is a special case handling for kernel_arguments to include its fields in the arguments
+                                if has_kernel_args:
+                                    # Check if we have kernel_parameter_descriptions
+                                    if hasattr(tool, 'kernel_parameter_descriptions'):
+                                        # Extract parameter descriptions from the kernel
+                                        for key, description in tool.kernel_parameter_descriptions.items():
+                                            if key not in args_dict:  # Only add if not already added
+                                                args_dict[key] = {
+                                                    'description': description if description else key,
+                                                    'title': key.replace('_', ' ').title(),
+                                                    'type': 'string'  # Default to string type
+                                                }
+                                    # Fall back to function's description if no specific descriptions 
+                                    elif hasattr(tool, 'description') and not args_dict:
+                                        # Add a generic parameter with the function's description
+                                        args_dict['input'] = {
+                                            'description': f"Input for {tool.name}: {tool.description}",
+                                            'title': 'Input',
+                                            'type': 'string'
+                                        }
+                            
+                            # If after all processing, arguments are still empty, add a dummy input parameter
+                            if not args_dict:
+                                args_dict['input'] = {
+                                    'description': f"Input for {tool.name}",
+                                    'title': 'Input',
+                                    'type': 'string'
+                                }
                             
                             # Create tool entry
                             tool_entry = {
@@ -506,14 +769,14 @@ class PlannerAgent(BaseAgent):
         # Build the instruction, avoiding backslashes in f-string expressions  
 
         instruction_template = f"""
-        You are the Planner, an AI orchestrator that manages a group of AI agents to accomplish tasks.
+You are the Planner, an AI orchestrator that manages a group of AI agents to accomplish tasks.
 
         For the given objective, come up with a simple step-by-step plan.
         This plan should involve individual tasks that, if executed correctly, will yield the correct answer. Do not add any superfluous steps.
         The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
 
         These actions are passed to the specific agent. Make sure the action contains all the information required for the agent to execute the task.
-
+        
         Your objective is:
         {objective}
 
@@ -523,6 +786,14 @@ class PlannerAgent(BaseAgent):
         These agents have access to the following functions:
         {tools_str}
 
+        IMPORTANT AGENT SELECTION GUIDANCE:
+        - HrAgent: ALWAYS use for ALL employee-related tasks like onboarding, hiring, benefits, payroll, training, employee records, ID cards, mentoring, background checks, etc.
+        - MarketingAgent: Use for marketing campaigns, branding, market research, content creation, social media, etc.
+        - ProcurementAgent: Use for purchasing, vendor management, supply chain, asset management, etc.
+        - ProductAgent: Use for product development, roadmaps, features, product feedback, etc.
+        - TechSupportAgent: Use for technical issues, software/hardware setup, troubleshooting, IT support, etc.
+        - GenericAgent: Use only for general knowledge tasks that don't fit other categories
+        - HumanAgent: Use only when human input is absolutely required and no other agent can handle the task
 
         The first step of your plan should be to ask the user for any additional information required to progress the rest of steps planned.
 
@@ -532,17 +803,12 @@ class PlannerAgent(BaseAgent):
 
         If there is a single function call that can directly solve the task, only generate a plan with a single step. For example, if someone asks to be granted access to a database, generate a plan with only one step involving the grant_database_access function, with no additional steps.
 
-        When generating the action in the plan, frame the action as an instruction you are passing to the agent to execute. It should be a short, single sentence. Include the function to use. For example, "Set up an Office 365 Account for Jessica Smith. Function: set_up_office_365_account"
-
-        Ensure the summary of the plan and the overall steps is less than 50 words.
-
-        Identify any additional information that might be required to complete the task. Include this information in the plan in the human_clarification_request field of the plan. If it is not required, leave it as null. Do not include information that you are waiting for clarification on in the string of the action field, as this otherwise won't get updated.
-
         You must prioritise using the provided functions to accomplish each step. First evaluate each and every function the agents have access too. Only if you cannot find a function needed to complete the task, and you have reviewed each and every function, and determined why each are not suitable, there are two options you can take when generating the plan.
         First evaluate whether the step could be handled by a typical large language model, without any specialised functions. For example, tasks such as "add 32 to 54", or "convert this SQL code to a python script", or "write a 200 word story about a fictional product strategy".
-        If a general Large Language Model CAN handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: No suitable function found. A generic LLM model is being used for this step." to the end of the action. Assign these steps to the GenericAgent. For example, if the task is to convert the following SQL into python code (SELECT * FROM employees;), and there is no function to convert SQL to python, write a step with the action "convert the following SQL into python code (SELECT * FROM employees;) EXCEPTION: No suitable function found. A generic LLM model is being used for this step." and assign it to the GenericAgent.
-        Alternatively, if a general Large Language Model CAN NOT handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: Human support required to do this step, no suitable function found." to the end of the action. Assign these steps to the HumanAgent. For example, if the task is to find the best way to get from A to B, and there is no function to calculate the best route, write a step with the action "Calculate the best route from A to B. EXCEPTION: Human support required, no suitable function found." and assign it to the HumanAgent.
 
+        If a general Large Language Model CAN handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: No suitable function found. A generic LLM model is being used for this step." to the end of the action. Assign these steps to the GenericAgent. For example, if the task is to convert the following SQL into python code (SELECT * FROM employees;), and there is no function to convert SQL to python, write a step with the action "convert the following SQL into python code (SELECT * FROM employees;) EXCEPTION: No suitable function found. A generic LLM model is being used for this step." and assign it to the GenericAgent.
+
+        Alternatively, if a general Large Language Model CAN NOT handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: Human support required to do this step, no suitable function found." to the end of the action. Assign these steps to the HumanAgent. For example, if the task is to find the best way to get from A to B, and there is no function to calculate the best route, write a step with the action "Calculate the best route from A to B. EXCEPTION: Human support required, no suitable function found." and assign it to the HumanAgent.
 
         Limit the plan to 6 steps or less.
 
