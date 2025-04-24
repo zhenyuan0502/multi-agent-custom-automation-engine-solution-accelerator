@@ -147,11 +147,17 @@ class PlannerAgent(BaseAgent):
         """
         try:
             logging.info("Initializing PlannerAgent from async init azure AI Agent")
-            # Create the Azure AI Agent using AppConfig
+            
+            # Generate instructions as a string rather than returning an object
+            # We'll use a blank input since this is just for initialization
+            instruction_args = self._generate_instruction("")
+            instructions = self._get_template().format(**instruction_args)
+            
+            # Create the Azure AI Agent using AppConfig with string instructions
             self._azure_ai_agent = await config.create_azure_ai_agent(
                 kernel=self._kernel,
                 agent_name="PlannerAgent",
-                instructions=self._generate_instruction(""),
+                instructions=instructions,  # Pass the formatted string, not an object
                 temperature=0.0
             )
             logging.info("Successfully created Azure AI Agent for PlannerAgent")
@@ -311,8 +317,11 @@ class PlannerAgent(BaseAgent):
             logging.debug(f"Input: {input_task}")
             logging.debug(f"Available agents: {self._available_agents}")
 
-            instruction = self._generate_instruction(input_task.description)
+            # Get template variables as a dictionary
+            args = self._generate_instruction(input_task.description)
             
+            # Format the template with the arguments
+            instruction = self._get_template().format(**args)
             logging.info(f"Generated instruction: {instruction}")   
             # Log the input task for debugging
             logging.info(f"Creating plan for task: '{input_task.description}'")
@@ -651,14 +660,14 @@ class PlannerAgent(BaseAgent):
                 
         return plan, steps
     
-    def _generate_instruction(self, objective: str) -> str:
+    def _generate_instruction(self, objective: str) -> any:
         """Generate instruction for the LLM to create a plan.
         
         Args:
             objective: The user's objective
             
         Returns:
-            Instruction string for the LLM
+            Dictionary containing the variables to populate the template
         """
         # Create a list of available agents
         agents_str = ", ".join(self._available_agents)
@@ -766,53 +775,62 @@ class PlannerAgent(BaseAgent):
         # Convert the tools list to a string representation
         tools_str = str(tools_list)
         
-        # Build the instruction, avoiding backslashes in f-string expressions  
+        # Return a dictionary with template variables
+        return {
+            "objective": objective,
+            "agents_str": agents_str,
+            "tools_str": tools_str,
+        }
+    
+    def _get_template(self):
+        """Generate the instruction template for the LLM."""  
+        # Build the instruction with proper format placeholders for .format() method
 
-        instruction_template = f"""
-You are the Planner, an AI orchestrator that manages a group of AI agents to accomplish tasks.
+        instruction_template = """
+        You are the Planner, an AI orchestrator that manages a group of AI agents to accomplish tasks.
 
-        For the given objective, come up with a simple step-by-step plan.
-        This plan should involve individual tasks that, if executed correctly, will yield the correct answer. Do not add any superfluous steps.
-        The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
+                For the given objective, come up with a simple step-by-step plan.
+                This plan should involve individual tasks that, if executed correctly, will yield the correct answer. Do not add any superfluous steps.
+                The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
 
-        These actions are passed to the specific agent. Make sure the action contains all the information required for the agent to execute the task.
-        
-        Your objective is:
-        {objective}
+                These actions are passed to the specific agent. Make sure the action contains all the information required for the agent to execute the task.
+                
+                Your objective is:
+                {objective}
 
-        The agents you have access to are:
-        {agents_str}
+                The agents you have access to are:
+                {agents_str}
 
-        These agents have access to the following functions:
-        {tools_str}
+                These agents have access to the following functions:
+                {tools_str}
 
-        IMPORTANT AGENT SELECTION GUIDANCE:
-        - HrAgent: ALWAYS use for ALL employee-related tasks like onboarding, hiring, benefits, payroll, training, employee records, ID cards, mentoring, background checks, etc.
-        - MarketingAgent: Use for marketing campaigns, branding, market research, content creation, social media, etc.
-        - ProcurementAgent: Use for purchasing, vendor management, supply chain, asset management, etc.
-        - ProductAgent: Use for product development, roadmaps, features, product feedback, etc.
-        - TechSupportAgent: Use for technical issues, software/hardware setup, troubleshooting, IT support, etc.
-        - GenericAgent: Use only for general knowledge tasks that don't fit other categories
-        - HumanAgent: Use only when human input is absolutely required and no other agent can handle the task
+                IMPORTANT AGENT SELECTION GUIDANCE:
+                - HrAgent: ALWAYS use for ALL employee-related tasks like onboarding, hiring, benefits, payroll, training, employee records, ID cards, mentoring, background checks, etc.
+                - MarketingAgent: Use for marketing campaigns, branding, market research, content creation, social media, etc.
+                - ProcurementAgent: Use for purchasing, vendor management, supply chain, asset management, etc.
+                - ProductAgent: Use for product development, roadmaps, features, product feedback, etc.
+                - TechSupportAgent: Use for technical issues, software/hardware setup, troubleshooting, IT support, etc.
+                - GenericAgent: Use only for general knowledge tasks that don't fit other categories
+                - HumanAgent: Use only when human input is absolutely required and no other agent can handle the task
 
-        The first step of your plan should be to ask the user for any additional information required to progress the rest of steps planned.
+                The first step of your plan should be to ask the user for any additional information required to progress the rest of steps planned.
 
-        Only use the functions provided as part of your plan. If the task is not possible with the agents and tools provided, create a step with the agent of type Exception and mark the overall status as completed.
+                Only use the functions provided as part of your plan. If the task is not possible with the agents and tools provided, create a step with the agent of type Exception and mark the overall status as completed.
 
-        Do not add superfluous steps - only take the most direct path to the solution, with the minimum number of steps. Only do the minimum necessary to complete the goal.
+                Do not add superfluous steps - only take the most direct path to the solution, with the minimum number of steps. Only do the minimum necessary to complete the goal.
 
-        If there is a single function call that can directly solve the task, only generate a plan with a single step. For example, if someone asks to be granted access to a database, generate a plan with only one step involving the grant_database_access function, with no additional steps.
+                If there is a single function call that can directly solve the task, only generate a plan with a single step. For example, if someone asks to be granted access to a database, generate a plan with only one step involving the grant_database_access function, with no additional steps.
 
-        You must prioritise using the provided functions to accomplish each step. First evaluate each and every function the agents have access too. Only if you cannot find a function needed to complete the task, and you have reviewed each and every function, and determined why each are not suitable, there are two options you can take when generating the plan.
-        First evaluate whether the step could be handled by a typical large language model, without any specialised functions. For example, tasks such as "add 32 to 54", or "convert this SQL code to a python script", or "write a 200 word story about a fictional product strategy".
+                You must prioritize using the provided functions to accomplish each step. First evaluate each and every function the agents have access too. Only if you cannot find a function needed to complete the task, and you have reviewed each and every function, and determined why each are not suitable, there are two options you can take when generating the plan.
+                First evaluate whether the step could be handled by a typical large language model, without any specialized functions. For example, tasks such as "add 32 to 54", or "convert this SQL code to a python script", or "write a 200 word story about a fictional product strategy".
 
-        If a general Large Language Model CAN handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: No suitable function found. A generic LLM model is being used for this step." to the end of the action. Assign these steps to the GenericAgent. For example, if the task is to convert the following SQL into python code (SELECT * FROM employees;), and there is no function to convert SQL to python, write a step with the action "convert the following SQL into python code (SELECT * FROM employees;) EXCEPTION: No suitable function found. A generic LLM model is being used for this step." and assign it to the GenericAgent.
+                If a general Large Language Model CAN handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: No suitable function found. A generic LLM model is being used for this step." to the end of the action. Assign these steps to the GenericAgent. For example, if the task is to convert the following SQL into python code (SELECT * FROM employees;), and there is no function to convert SQL to python, write a step with the action "convert the following SQL into python code (SELECT * FROM employees;) EXCEPTION: No suitable function found. A generic LLM model is being used for this step." and assign it to the GenericAgent.
 
-        Alternatively, if a general Large Language Model CAN NOT handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: Human support required to do this step, no suitable function found." to the end of the action. Assign these steps to the HumanAgent. For example, if the task is to find the best way to get from A to B, and there is no function to calculate the best route, write a step with the action "Calculate the best route from A to B. EXCEPTION: Human support required, no suitable function found." and assign it to the HumanAgent.
+                Alternatively, if a general Large Language Model CAN NOT handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: Human support required to do this step, no suitable function found." to the end of the action. Assign these steps to the HumanAgent. For example, if the task is to find the best way to get from A to B, and there is no function to calculate the best route, write a step with the action "Calculate the best route from A to B. EXCEPTION: Human support required, no suitable function found." and assign it to the HumanAgent.
 
-        Limit the plan to 6 steps or less.
+                Limit the plan to 6 steps or less.
 
-        Choose from {agents_str} ONLY for planning your steps.
+                Choose from {agents_str} ONLY for planning your steps.
 
-        """
+                """        
         return instruction_template
