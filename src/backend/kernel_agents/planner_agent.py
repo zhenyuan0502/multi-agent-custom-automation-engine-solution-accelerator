@@ -147,11 +147,17 @@ class PlannerAgent(BaseAgent):
         """
         try:
             logging.info("Initializing PlannerAgent from async init azure AI Agent")
-            # Create the Azure AI Agent using AppConfig
+            
+            # Generate instructions as a string rather than returning an object
+            # We'll use a blank input since this is just for initialization
+            instruction_args = self._generate_instruction("")
+            instructions = self._get_template().format(**instruction_args)
+            
+            # Create the Azure AI Agent using AppConfig with string instructions
             self._azure_ai_agent = await config.create_azure_ai_agent(
                 kernel=self._kernel,
                 agent_name="PlannerAgent",
-                instructions=self._generate_instruction(""),
+                instructions=instructions,  # Pass the formatted string, not an object
                 temperature=0.0
             )
             logging.info("Successfully created Azure AI Agent for PlannerAgent")
@@ -311,8 +317,11 @@ class PlannerAgent(BaseAgent):
             logging.debug(f"Input: {input_task}")
             logging.debug(f"Available agents: {self._available_agents}")
 
-            instruction = self._generate_instruction(input_task.description)
+            # Get template variables as a dictionary
+            args = self._generate_instruction(input_task.description)
             
+            # Format the template with the arguments
+            instruction = self._get_template().format(**args)
             logging.info(f"Generated instruction: {instruction}")   
             # Log the input task for debugging
             logging.info(f"Creating plan for task: '{input_task.description}'")
@@ -651,14 +660,14 @@ class PlannerAgent(BaseAgent):
                 
         return plan, steps
     
-    def _generate_instruction(self, objective: str) -> str:
+    def _generate_instruction(self, objective: str) -> any:
         """Generate instruction for the LLM to create a plan.
         
         Args:
             objective: The user's objective
             
         Returns:
-            Instruction string for the LLM
+            Dictionary containing the variables to populate the template
         """
         # Create a list of available agents
         agents_str = ", ".join(self._available_agents)
@@ -766,11 +775,16 @@ class PlannerAgent(BaseAgent):
         # Convert the tools list to a string representation
         tools_str = str(tools_list)
         
-        return args
+        # Return a dictionary with template variables
+        return {
+            "objective": objective,
+            "agents_str": agents_str,
+            "tools_str": tools_str,
+        }
     
     def _get_template(self):
         """Generate the instruction template for the LLM."""  
-        # Build the instruction, avoiding backslashes in f-string expressions  
+        # Build the instruction with proper format placeholders for .format() method
 
         instruction_template = """
         You are the Planner, an AI orchestrator that manages a group of AI agents to accomplish tasks.
@@ -782,13 +796,13 @@ class PlannerAgent(BaseAgent):
                 These actions are passed to the specific agent. Make sure the action contains all the information required for the agent to execute the task.
                 
                 Your objective is:
-                {{$objective}}
+                {objective}
 
                 The agents you have access to are:
-                {{$agents_str}}
+                {agents_str}
 
                 These agents have access to the following functions:
-                {{$tools_str}}
+                {tools_str}
 
                 IMPORTANT AGENT SELECTION GUIDANCE:
                 - HrAgent: ALWAYS use for ALL employee-related tasks like onboarding, hiring, benefits, payroll, training, employee records, ID cards, mentoring, background checks, etc.
@@ -816,7 +830,7 @@ class PlannerAgent(BaseAgent):
 
                 Limit the plan to 6 steps or less.
 
-                Choose from {{$agents_str}} ONLY for planning your steps.
+                Choose from {agents_str} ONLY for planning your steps.
 
                 """        
         return instruction_template

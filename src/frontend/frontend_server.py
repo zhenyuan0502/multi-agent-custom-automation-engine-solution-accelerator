@@ -29,6 +29,7 @@ import html
 def get_config():
     backend_url = html.escape(os.getenv("BACKEND_API_URL", "http://localhost:8000"))
     auth_enabled = html.escape(os.getenv("AUTH_ENABLED", "True"))
+    backend_url = backend_url + "/api"
     return f'''
         const BACKEND_API_URL = "{backend_url}";
         const AUTH_ENABLED = "{auth_enabled}";
