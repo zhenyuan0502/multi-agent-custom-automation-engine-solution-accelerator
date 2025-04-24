@@ -2,6 +2,7 @@ import logging
 import uuid
 import json
 import re
+import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from pydantic import BaseModel, Field
 
@@ -93,6 +94,48 @@ class PlannerAgent(BaseAgent):
         # Create the Azure AI Agent for planning operations
         # This will be initialized in async_init
         self._azure_ai_agent = None
+
+    def _get_response_format_schema(self) -> dict:
+        """
+        Returns a JSON schema that defines the expected structure of the response.
+        This ensures responses from the agent will match the required format exactly.
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "initial_goal": {
+                    "type": "string",
+                    "description": "The primary goal extracted from the user's input task"
+                },
+                "steps": {
+                    "type": "array",
+                    "description": "List of steps required to complete the task",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "action": {
+                                "type": "string",
+                                "description": "A clear instruction for the agent including the function name to use"
+                            },
+                            "agent": {
+                                "type": "string",
+                                "description": "The name of the agent responsible for this step"
+                            }
+                        },
+                        "required": ["action", "agent"]
+                    }
+                },
+                "summary_plan_and_steps": {
+                    "type": "string",
+                    "description": "A concise summary of the overall plan and its steps in less than 50 words"
+                },
+                "human_clarification_request": {
+                    "type": ["string", "null"],
+                    "description": "Optional request for additional information needed from the user"
+                }
+            },
+            "required": ["initial_goal", "steps", "summary_plan_and_steps"]
+        }
         
     async def async_init(self) -> None:
         """Asynchronously initialize the PlannerAgent.
@@ -103,6 +146,7 @@ class PlannerAgent(BaseAgent):
             None
         """
         try:
+            logging.info("Initializing PlannerAgent from async init azure AI Agent")
             # Create the Azure AI Agent using AppConfig
             self._azure_ai_agent = await config.create_azure_ai_agent(
                 kernel=self._kernel,
@@ -128,12 +172,7 @@ class PlannerAgent(BaseAgent):
         # Parse the input task
         logging.info("Handling input task")
 
-        logging.info(f"Parsed input task: {input_task}")
-        
-        # Generate a structured plan with steps
-        
-        logging.info(f"Received input task: {input_task.description}")
-        logging.info(f"Session ID: {input_task.session_id}, User ID: {self._user_id}")
+
         plan, steps = await self._create_structured_plan(input_task)
 
         logging.info(f"Plan created: {plan}")
@@ -296,7 +335,10 @@ class PlannerAgent(BaseAgent):
             
             logging.debug(f"Kernel arguments: {kernel_args}")
 
-            # Call invoke with proper keyword arguments
+            # Get the schema for our expected response format
+            response_format_schema = self._get_response_format_schema()
+            
+            # Call invoke with proper keyword arguments and JSON response schema
             response_content = ""
             
             # Ensure we're using the right pattern for Azure AI agents with semantic kernel
@@ -305,6 +347,11 @@ class PlannerAgent(BaseAgent):
                 arguments=kernel_args,
                 settings={
                     "temperature": 0.0,  # Keep temperature low for consistent planning
+                    "max_tokens": 10096,  # Ensure we have enough tokens for the full plan
+                    "response_format": {
+                        "type": "json_object",
+                        "schema": response_format_schema
+                    }
                 }
             )
             
@@ -313,127 +360,116 @@ class PlannerAgent(BaseAgent):
                 if chunk is not None:
                     response_content += str(chunk)
             
-
-            logging.info(f"Response content: {response_content}")
+            logging.info(f"Response content length: {len(response_content)}")
+            logging.debug(f"Response content: {response_content[:500]}...")
             
             # Check if response is empty or whitespace
             if not response_content or response_content.isspace():
                 raise ValueError("Received empty response from Azure AI Agent")
             
-            # Parse the JSON response using the structured output model
+            # Parse the JSON response directly to PlannerResponsePlan
+            parsed_result = None
+            
+            # Try various parsing approaches in sequence
             try:
-                # First try to parse using Pydantic model
+                # 1. First attempt: Try to parse the raw response directly
                 try:
                     parsed_result = PlannerResponsePlan.parse_raw(response_content)
-                except Exception as e1:
-                    logging.warning(f"Failed to parse direct JSON with Pydantic: {str(e1)}")
+                    logging.info("Successfully parsed response with direct parsing")
+                except Exception as parse_error:
+                    logging.warning(f"Failed direct parse: {parse_error}")
                     
-                    # If direct parsing fails, try to extract JSON first
-                    json_match = re.search(r'```json\s*(.*?)\s*```', response_content, re.DOTALL)
+                    # 2. Try to extract JSON from markdown code blocks
+                    json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', response_content, re.DOTALL)
                     if json_match:
                         json_content = json_match.group(1)
-                        logging.info(f"Found JSON content in markdown code block, length: {len(json_content)}")
+                        logging.info(f"Found JSON in code block, attempting to parse")
                         try:
                             parsed_result = PlannerResponsePlan.parse_raw(json_content)
-                        except Exception as e2:
-                            logging.warning(f"Failed to parse extracted JSON with Pydantic: {str(e2)}")
-                            # Try conventional JSON parsing as fallback
-                            json_data = json.loads(json_content)
-                            parsed_result = PlannerResponsePlan.parse_obj(json_data)
-                    else:
-                        # Try to extract JSON without code blocks - maybe it's embedded in text
-                        # Look for patterns like { ... } that contain "initial_goal" and "steps"
+                            logging.info("Successfully parsed JSON from code block")
+                        except Exception as code_block_error:
+                            logging.warning(f"Failed to parse JSON in code block: {code_block_error}")
+                            # Try parsing as dict first, then convert to model
+                            try:
+                                json_dict = json.loads(json_content)
+                                parsed_result = PlannerResponsePlan.parse_obj(json_dict)
+                                logging.info("Successfully parsed JSON dict from code block")
+                            except Exception as dict_error:
+                                logging.warning(f"Failed to parse JSON dict from code block: {dict_error}")
+                    
+                    # 3. Look for patterns like { ... } that might contain JSON
+                    if parsed_result is None:
                         json_pattern = r'\{.*?"initial_goal".*?"steps".*?\}'
                         alt_match = re.search(json_pattern, response_content, re.DOTALL)
-                        
                         if alt_match:
                             potential_json = alt_match.group(0)
-                            logging.info(f"Found potential JSON in text, length: {len(potential_json)}")
+                            logging.info(f"Found potential JSON pattern in text, attempting to parse")
                             try:
-                                json_data = json.loads(potential_json)
-                                parsed_result = PlannerResponsePlan.parse_obj(json_data)
-                            except Exception as e3:
-                                logging.warning(f"Failed to parse potential JSON: {str(e3)}")
-                                # If all extraction attempts fail, try parsing the whole response as JSON
-                                json_data = json.loads(response_content)
-                                parsed_result = PlannerResponsePlan.parse_obj(json_data)
-                        else:
-                            # If we can't find JSON patterns, create a fallback plan from the text
-                            logging.info("Using fallback plan creation from text response")
-                            return await self._create_fallback_plan_from_text(input_task, response_content)
+                                json_dict = json.loads(potential_json)
+                                parsed_result = PlannerResponsePlan.parse_obj(json_dict)
+                                logging.info("Successfully parsed JSON using regex pattern extraction")
+                            except Exception as pattern_error:
+                                logging.warning(f"Failed to parse JSON pattern: {pattern_error}")
                 
-                # Extract plan details and log for debugging
-                initial_goal = parsed_result.initial_goal
-                steps_data = parsed_result.steps
-                summary = parsed_result.summary_plan_and_steps
-                human_clarification_request = parsed_result.human_clarification_request
-                
-                # Log potential mismatches between task and plan for debugging
-                if "onboard" in input_task.description.lower() and "marketing" in initial_goal.lower():
-                    logging.warning(f"Potential mismatch: Task was about onboarding but plan goal mentions marketing: {initial_goal}")
+                if parsed_result is None:
+                    # If all parsing attempts fail, create a fallback plan from the text content
+                    logging.warning("All JSON parsing attempts failed, creating fallback plan from text")
+                    return await self._create_fallback_plan_from_text(input_task, response_content)
                     
-                # Log the steps and agent assignments for debugging
-                for i, step in enumerate(steps_data):
-                    logging.info(f"Step {i+1} - Agent: {step.agent}, Action: {step.action}")
+            except Exception as parsing_exception:
+                logging.exception(f"Error during parsing attempts: {parsing_exception}")
+                return await self._create_fallback_plan_from_text(input_task, response_content)
+            
+            # At this point, we have a valid parsed_result
+            
+            # Extract plan details
+            initial_goal = parsed_result.initial_goal
+            steps_data = parsed_result.steps
+            summary = parsed_result.summary_plan_and_steps
+            human_clarification_request = parsed_result.human_clarification_request
+            
+            # Create the Plan instance
+            plan = Plan(
+                id=str(uuid.uuid4()),
+                session_id=input_task.session_id,
+                user_id=self._user_id,
+                initial_goal=initial_goal,
+                overall_status=PlanStatus.in_progress,
+                summary=summary,
+                human_clarification_request=human_clarification_request
+            )
+            
+            # Store the plan
+            await self._memory_store.add_plan(plan)
+            
+            # Create steps from the parsed data
+            steps = []
+            for step_data in steps_data:
+                action = step_data.action
+                agent_name = step_data.agent
                 
-                # Create the Plan instance
-                plan = Plan(
+                # Validate agent name
+                if agent_name not in self._available_agents:
+                    logging.warning(f"Invalid agent name: {agent_name}, defaulting to GenericAgent")
+                    agent_name = "GenericAgent"
+                
+                # Create the step
+                step = Step(
                     id=str(uuid.uuid4()),
+                    plan_id=plan.id,
                     session_id=input_task.session_id,
                     user_id=self._user_id,
-                    initial_goal=initial_goal,
-                    overall_status=PlanStatus.in_progress,
-                    summary=summary,
-                    human_clarification_request=human_clarification_request
+                    action=action,
+                    agent=agent_name,
+                    status=StepStatus.planned,
+                    human_approval_status=HumanFeedbackStatus.requested
                 )
                 
-                # Store the plan
-                await self._memory_store.add_plan(plan)
+                # Store the step
+                await self._memory_store.add_step(step)
+                steps.append(step)
                 
-                track_event_if_configured(
-                    "Planner - Initial plan and added into the cosmos",
-                    {
-                        "session_id": input_task.session_id,
-                        "user_id": self._user_id,
-                        "initial_goal": initial_goal,
-                        "overall_status": PlanStatus.in_progress,
-                        "source": "PlannerAgent",
-                        "summary": summary,
-                        "human_clarification_request": human_clarification_request,
-                    },
-                )
-                
-                # Create steps from the parsed data
-                steps = []
-                for step_data in steps_data:
-                    action = step_data.action
-                    agent_name = step_data.agent
-                    
-                    # Log any unusual agent assignments for debugging
-                    if "onboard" in input_task.description.lower() and agent_name != "HrAgent":
-                        logging.warning(f"UNUSUAL AGENT ASSIGNMENT: Task contains 'onboard' but assigned to {agent_name} instead of HrAgent")
-                    
-                    # Validate agent name
-                    if agent_name not in self._available_agents:
-                        logging.warning(f"Invalid agent name: {agent_name}, defaulting to GenericAgent")
-                        agent_name = "GenericAgent"
-                    
-                    # Create the step
-                    step = Step(
-                        id=str(uuid.uuid4()),
-                        plan_id=plan.id,
-                        session_id=input_task.session_id,
-                        user_id=self._user_id,
-                        action=action,
-                        agent=agent_name,
-                        status=StepStatus.planned,
-                        human_approval_status=HumanFeedbackStatus.requested
-                    )
-                    
-                    # Store the step
-                    await self._memory_store.add_step(step)
-                    steps.append(step)
-                    
+                try:
                     track_event_if_configured(
                         "Planner - Added planned individual step into the cosmos",
                         {
@@ -446,44 +482,84 @@ class PlannerAgent(BaseAgent):
                             "human_approval_status": HumanFeedbackStatus.requested,
                         },
                     )
-                
-                return plan, steps
-                
-            except Exception as e:
-                # If JSON parsing fails, log error and create error plan
-                logging.exception(f"Failed to parse JSON response: {e}")
-                logging.info(f"Raw response was: {response_content[:1000]}...")
-                # Try a fallback approach
-                return await self._create_fallback_plan_from_text(input_task, response_content)
+                except Exception as event_error:
+                    # Don't let event tracking errors break the main flow
+                    logging.warning(f"Error in event tracking: {event_error}")
+            
+            return plan, steps
                 
         except Exception as e:
             logging.exception(f"Error creating structured plan: {e}")
             
-            track_event_if_configured(
-                f"Planner - Error in create_structured_plan: {e} into the cosmos",
-                {
-                    "session_id": input_task.session_id,
-                    "user_id": self._user_id,
-                    "initial_goal": "Error generating plan",
-                    "overall_status": PlanStatus.failed,
-                    "source": "PlannerAgent",
-                    "summary": f"Error generating plan: {e}",
-                },
-            )
+            # Create a fallback dummy plan when parsing fails
+            logging.info("Creating fallback dummy plan due to parsing error")
             
-            # Create an error plan
-            error_plan = Plan(
+            import datetime
+            
+            # Create a dummy plan with the original task description
+            dummy_plan = Plan(
                 id=str(uuid.uuid4()),
                 session_id=input_task.session_id,
                 user_id=self._user_id,
-                initial_goal="Error generating plan",
-                overall_status=PlanStatus.failed,
-                summary=f"Error generating plan: {str(e)}"
+                initial_goal=input_task.description,
+                overall_status=PlanStatus.in_progress,
+                summary=f"Plan created for: {input_task.description}",
+                human_clarification_request=None,
+                timestamp=datetime.datetime.utcnow().isoformat()
             )
             
-            await self._memory_store.add_plan(error_plan)
-            return error_plan, []
-    
+            # Store the dummy plan
+            await self._memory_store.add_plan(dummy_plan)
+            
+            # Create a dummy step for analyzing the task
+            dummy_step = Step(
+                id=str(uuid.uuid4()),
+                plan_id=dummy_plan.id,
+                session_id=input_task.session_id,
+                user_id=self._user_id,
+                action="Analyze the task: " + input_task.description,
+                agent="GenericAgent",
+                status=StepStatus.planned,
+                human_approval_status=HumanFeedbackStatus.requested,
+                timestamp=datetime.datetime.utcnow().isoformat()
+            )
+            
+            # Store the dummy step
+            await self._memory_store.add_step(dummy_step)
+            
+            # Add a second step to request human clarification
+            clarification_step = Step(
+                id=str(uuid.uuid4()),
+                plan_id=dummy_plan.id,
+                session_id=input_task.session_id,
+                user_id=self._user_id,
+                action=f"Provide more details about: {input_task.description}",
+                agent="HumanAgent",
+                status=StepStatus.planned,
+                human_approval_status=HumanFeedbackStatus.requested,
+                timestamp=datetime.datetime.utcnow().isoformat()
+            )
+            
+            # Store the clarification step
+            await self._memory_store.add_step(clarification_step)
+            
+            # Log the event
+            try:
+                track_event_if_configured(
+                    "Planner - Created fallback dummy plan due to parsing error",
+                    {
+                        "session_id": input_task.session_id,
+                        "user_id": self._user_id,
+                        "error": str(e),
+                        "description": input_task.description,
+                        "source": "PlannerAgent",
+                    }
+                )
+            except Exception as event_error:
+                logging.warning(f"Error in event tracking during fallback: {event_error}")
+            
+            return dummy_plan, [dummy_step, clarification_step]
+            
     async def _create_fallback_plan_from_text(self, input_task: InputTask, text_content: str) -> Tuple[Plan, List[Step]]:
         """Create a plan from unstructured text when JSON parsing fails.
         
@@ -557,7 +633,7 @@ class PlannerAgent(BaseAgent):
                 agent = re.sub(r'\s+', '', agent_text)
                 if not agent or agent not in self._available_agents:
                     agent = "GenericAgent"  # Default to GenericAgent if not recognized
-                    
+                
                 # Create and store the step
                 step = Step(
                     id=str(uuid.uuid4()),
@@ -587,51 +663,113 @@ class PlannerAgent(BaseAgent):
         # Create a list of available agents
         agents_str = ", ".join(self._available_agents)
         
-        # Create list of available tools
-        # If _agent_tools_list is empty but we have agent instances available elsewhere,
-        # we should retrieve tools directly from agent instances
-        tools_str = ""
+        # Create list of available tools in JSON-like format
+        tools_list = []
+        
+        # Check if we have agent instances to extract tools from
         if hasattr(self, '_agent_instances') and self._agent_instances:
-            # Extract tools from agent instances
-            agent_tools_sections = []
-            
             # Process each agent to get their tools
             for agent_name, agent in self._agent_instances.items():
                 if hasattr(agent, '_tools') and agent._tools:
-                    # Create a section header for this agent
-                    agent_tools_sections.append(f"### {agent_name} Tools ###")
-                    
                     # Add each tool from this agent
                     for tool in agent._tools:
                         if hasattr(tool, 'name') and hasattr(tool, 'description'):
-                            tool_desc = f"Agent: {agent_name} - Function: {tool.name} - {tool.description}"
-                            agent_tools_sections.append(tool_desc)
-                    
-                    # Add a blank line after each agent's tools
-                    agent_tools_sections.append("")
+                            # Extract function parameters/arguments
+                            args_dict = {}
+                            if hasattr(tool, 'parameters'):
+                                # Check if we have kernel_arguments that need to be processed
+                                has_kernel_args = any(param.name == 'kernel_arguments' for param in tool.parameters)
+                                has_kwargs = any(param.name == 'kwargs' for param in tool.parameters)
+                                
+                                # Process regular parameters first
+                                for param in tool.parameters:
+                                    # Skip kernel_arguments and kwargs as we'll handle them specially
+                                    if param.name in ['kernel_arguments', 'kwargs']:
+                                        continue
+                                    
+                                    param_type = "string"  # Default type
+                                    if hasattr(param, 'type'):
+                                        param_type = param.type
+                                    
+                                    args_dict[param.name] = {
+                                        'description': param.description if param.description else param.name,
+                                        'title': param.name.replace('_', ' ').title(),
+                                        'type': param_type
+                                    }
+                                
+                                # If we have a kernel_arguments parameter, introspect it to extract its values
+                                # This is a special case handling for kernel_arguments to include its fields in the arguments
+                                if has_kernel_args:
+                                    # Check if we have kernel_parameter_descriptions
+                                    if hasattr(tool, 'kernel_parameter_descriptions'):
+                                        # Extract parameter descriptions from the kernel
+                                        for key, description in tool.kernel_parameter_descriptions.items():
+                                            if key not in args_dict:  # Only add if not already added
+                                                args_dict[key] = {
+                                                    'description': description if description else key,
+                                                    'title': key.replace('_', ' ').title(),
+                                                    'type': 'string'  # Default to string type
+                                                }
+                                    # Fall back to function's description if no specific descriptions 
+                                    elif hasattr(tool, 'description') and not args_dict:
+                                        # Add a generic parameter with the function's description
+                                        args_dict['input'] = {
+                                            'description': f"Input for {tool.name}: {tool.description}",
+                                            'title': 'Input',
+                                            'type': 'string'
+                                        }
+                            
+                            # If after all processing, arguments are still empty, add a dummy input parameter
+                            if not args_dict:
+                                args_dict['input'] = {
+                                    'description': f"Input for {tool.name}",
+                                    'title': 'Input',
+                                    'type': 'string'
+                                }
+                            
+                            # Create tool entry
+                            tool_entry = {
+                                'agent': agent_name,
+                                'function': tool.name,
+                                'description': tool.description,
+                                'arguments': str(args_dict)
+                            }
+                            
+                            tools_list.append(tool_entry)
             
-            # Join all sections
-            if agent_tools_sections:
-                tools_str = "\n".join(agent_tools_sections)
-                # Log the tools for debugging
-                logging.debug(f"Generated tools list from agent instances with {len(agent_tools_sections)} entries")
-            else:
-                tools_str = "Various specialized tools (No tool details available from agent instances)"
-                logging.warning("No tools found in agent instances")
-        elif self._agent_tools_list:
-            # Fall back to the existing tools list if available
-            tools_str = "\n".join(self._agent_tools_list)
-            logging.debug(f"Using existing agent_tools_list with {len(self._agent_tools_list)} entries")
-        else:
-            # Default fallback
-            tools_str = "Various specialized tools"
-            logging.warning("No tools information available for planner instruction")
+            logging.debug(f"Generated {len(tools_list)} tools from agent instances")
         
-        # Build the instruction, avoiding backslashes in f-string expressions
-        objective_part = f"Your objective is:\n{objective}" if objective else "When given an objective, analyze it and create a plan to accomplish it."
+        # If we couldn't extract tools from agent instances, create a simplified format
+        if not tools_list:
+            logging.warning("No tool details extracted from agent instances, creating simplified format")
+            if self._agent_tools_list:
+                # Create dummy entries from the existing tool list strings
+                for tool_str in self._agent_tools_list:
+                    if ":" in tool_str:
+                        parts = tool_str.split(":")
+                        if len(parts) >= 2:
+                            agent_part = parts[0].strip()
+                            function_part = parts[1].strip()
+                            
+                            # Extract agent name if format is "Agent: AgentName"
+                            agent_name = agent_part.replace("Agent", "").strip()
+                            if not agent_name:
+                                agent_name = "GenericAgent"
+                                
+                            tools_list.append({
+                                'agent': agent_name,
+                                'function': function_part,
+                                'description': f"Function {function_part} from {agent_name}",
+                                'arguments': "{}"
+                            })
         
-        return f"""
-        You are the Planner, an AI orchestrator that manages a group of AI agents to accomplish tasks.
+        # Convert the tools list to a string representation
+        tools_str = str(tools_list)
+        
+        # Build the instruction, avoiding backslashes in f-string expressions  
+
+        instruction_template = f"""
+You are the Planner, an AI orchestrator that manages a group of AI agents to accomplish tasks.
 
         For the given objective, come up with a simple step-by-step plan.
         This plan should involve individual tasks that, if executed correctly, will yield the correct answer. Do not add any superfluous steps.
@@ -639,7 +777,8 @@ class PlannerAgent(BaseAgent):
 
         These actions are passed to the specific agent. Make sure the action contains all the information required for the agent to execute the task.
         
-        {objective_part}
+        Your objective is:
+        {objective}
 
         The agents you have access to are:
         {agents_str}
@@ -676,3 +815,4 @@ class PlannerAgent(BaseAgent):
         Choose from {agents_str} ONLY for planning your steps.
 
         """
+        return instruction_template

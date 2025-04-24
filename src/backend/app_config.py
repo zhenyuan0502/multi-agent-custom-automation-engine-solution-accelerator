@@ -219,7 +219,10 @@ class AppConfig:
                     tool_definitions = tools
             
             # Create the agent using the project client
-            logging.info("Creating agent '%s' with model '%s'", agent_name, self.AZURE_OPENAI_DEPLOYMENT_NAME)
+            if response_format is not None:
+                logging.info("Response format provided: %s", response_format)
+
+                
             agent_definition = await project_client.agents.create_agent(
                 model=self.AZURE_OPENAI_DEPLOYMENT_NAME,
                 name=agent_name,
