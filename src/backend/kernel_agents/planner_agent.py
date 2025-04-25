@@ -148,10 +148,8 @@ class PlannerAgent(BaseAgent):
         try:
             logging.info("Initializing PlannerAgent from async init azure AI Agent")
             
-            # Generate instructions as a string rather than returning an object
-            # We'll use a blank input since this is just for initialization
-            instruction_args = self._generate_instruction("")
-            instructions = self._get_template().format(**instruction_args)
+            # Get the agent template - defined in function to allow for easy updates
+            instructions = self._get_template()
             
             # Create the Azure AI Agent using AppConfig with string instructions
             self._azure_ai_agent = await config.create_azure_ai_agent(
@@ -318,12 +316,8 @@ class PlannerAgent(BaseAgent):
             logging.debug(f"Available agents: {self._available_agents}")
 
             # Get template variables as a dictionary
-            args = self._generate_instruction(input_task.description)
+            args = self._generate_args(input_task.description)
             
-            # Format the template with the arguments
-            instruction = self._get_template().format(**args)
-            logging.info(f"Generated instruction: {instruction}")   
-            # Log the input task for debugging
             logging.info(f"Creating plan for task: '{input_task.description}'")
             logging.info(f"Using available agents: {self._available_agents}")
             
@@ -336,19 +330,16 @@ class PlannerAgent(BaseAgent):
                 raise RuntimeError("Failed to initialize Azure AI Agent for planning")
                 
             # Log detailed information about the instruction being sent
-            logging.info(f"Invoking PlannerAgent with instruction length: {len(instruction)}")
+            #logging.info(f"Invoking PlannerAgent with instruction length: {len(instruction)}")
             
             # Create kernel arguments - make sure we explicitly emphasize the task
-            kernel_args = KernelArguments()
-            kernel_args["input"] = f"TASK: {input_task.description}\n\n{instruction}"
+            kernel_args = KernelArguments(**args)
+            #kernel_args["input"] = f"TASK: {input_task.description}\n\n{instruction}"
             
             logging.debug(f"Kernel arguments: {kernel_args}")
 
             # Get the schema for our expected response format
             response_format_schema = self._get_response_format_schema()
-            
-            # Call invoke with proper keyword arguments and JSON response schema
-            response_content = ""
             
             # Ensure we're using the right pattern for Azure AI agents with semantic kernel
             # Properly handle async generation
@@ -363,6 +354,9 @@ class PlannerAgent(BaseAgent):
                     }
                 }
             )
+                        
+            # Call invoke with proper keyword arguments and JSON response schema
+            response_content = ""
             
             # Collect the response from the async generator
             async for chunk in async_generator:
@@ -660,7 +654,7 @@ class PlannerAgent(BaseAgent):
                 
         return plan, steps
     
-    def _generate_instruction(self, objective: str) -> any:
+    def _generate_args(self, objective: str) -> any:
         """Generate instruction for the LLM to create a plan.
         
         Args:
@@ -796,13 +790,13 @@ class PlannerAgent(BaseAgent):
                 These actions are passed to the specific agent. Make sure the action contains all the information required for the agent to execute the task.
                 
                 Your objective is:
-                {objective}
+                {{$objective}}
 
                 The agents you have access to are:
-                {agents_str}
+                {{$agents_str}}
 
                 These agents have access to the following functions:
-                {tools_str}
+                {{$tools_str}}
 
                 IMPORTANT AGENT SELECTION GUIDANCE:
                 - HrAgent: ALWAYS use for ALL employee-related tasks like onboarding, hiring, benefits, payroll, training, employee records, ID cards, mentoring, background checks, etc.
@@ -830,7 +824,7 @@ class PlannerAgent(BaseAgent):
 
                 Limit the plan to 6 steps or less.
 
-                Choose from {agents_str} ONLY for planning your steps.
+                Choose from {{$agents_str}} ONLY for planning your steps.
 
                 """        
         return instruction_template
