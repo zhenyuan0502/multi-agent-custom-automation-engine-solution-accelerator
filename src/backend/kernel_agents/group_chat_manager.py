@@ -43,7 +43,7 @@ from models.messages_kernel import (
     InputTask,
     Plan,
 )
-from models.agent_types import AgentType
+from models.messages_kernel import AgentType
 from event_utils import track_event_if_configured
 
 
@@ -171,7 +171,7 @@ class GroupChatManager:
             """
             # If no history, start with the PlannerAgent
             if not history or not history.messages:
-                return next((agent for agent in agents if agent.name == "PlannerAgent"), None)
+                return next((agent for agent in agents if agent.name == AgentType.PLANNER.value), None)
             
             # Get the last message
             last_message = history.messages[-1]
@@ -182,14 +182,14 @@ class GroupChatManager:
                 last_sender = last_message.name
             
             # Route based on the last sender
-            if last_sender == "PlannerAgent":
+            if last_sender == AgentType.PLANNER.value:
                 # After the planner creates a plan, HumanAgent should review it
-                return next((agent for agent in agents if agent.name == "HumanAgent"), None)
-            elif last_sender == "HumanAgent":
+                return next((agent for agent in agents if agent.name == AgentType.HUMAN.value), None)
+            elif last_sender == AgentType.HUMAN.value:
                 # After human feedback, the specific agent for the step should proceed
                 # For simplicity, use GenericAgent as fallback
-                return next((agent for agent in agents if agent.name == "GenericAgent"), None)
-            elif last_sender == "GroupChatManager":
+                return next((agent for agent in agents if agent.name == AgentType.GENERIC.value), None)
+            elif last_sender == AgentType.GROUP_CHAT_MANAGER.value:
                 # If the manager just assigned a step, find the agent that should execute it
                 # For simplicity, just rotate to the next agent
                 agent_names = [agent.name for agent in agents]
@@ -201,7 +201,7 @@ class GroupChatManager:
                     return agents[0] if agents else None
             else:
                 # Default to the Group Chat Manager
-                return next((agent for agent in agents if agent.name == "GroupChatManager"), 
+                return next((agent for agent in agents if agent.name ==AgentType.GROUP_CHAT_MANAGER.value), 
                            agents[0] if agents else None)
 
     class PlanTerminationStrategy(TerminationStrategy):
@@ -276,7 +276,7 @@ class GroupChatManager:
                 user_id=self._user_id,
                 plan_id="",
                 content=f"{input_task.description}",
-                source="HumanAgent",
+                source=AgentType.HUMAN.value,
                 step_id="",
             )
         )
@@ -287,16 +287,16 @@ class GroupChatManager:
                 "session_id": input_task.session_id,
                 "user_id": self._user_id,
                 "content": input_task.description,
-                "source": "HumanAgent",
+                "source": AgentType.HUMAN.value,
             },
         )
         
         # Ensure the planner agent is registered
-        if "PlannerAgent" not in self._agent_instances:
-            return "PlannerAgent not registered. Cannot create plan."
+        if AgentType.PLANNER.value not in self._agent_instances:
+            return f"{AgentType.PLANNER.value} not registered. Cannot create plan."
             
         # Get the planner agent
-        planner_agent = self._agent_instances["PlannerAgent"]
+        planner_agent = self._agent_instances[AgentType.PLANNER.value]
         
         # Forward the input task to the planner agent to create a plan
         planner_args = KernelArguments(input_task_json=input_task_json)
@@ -457,8 +457,8 @@ class GroupChatManager:
             formatted_agent = re.sub(r"([a-z])([A-Z])", r"\1 \2", agent_name)
         else:
             # Default to GenericAgent if none specified
-            agent_name = "GenericAgent"
-            formatted_agent = "Generic Agent"
+            agent_name = AgentType.GENERIC.value
+            formatted_agent = AgentType.GENERIC.value
         
         # Store the agent message
         await self._memory_store.add_item(
@@ -485,7 +485,7 @@ class GroupChatManager:
         )
         
         # Special handling for HumanAgent
-        if agent_name == "HumanAgent":
+        if agent_name == AgentType.HUMAN.value:
             # Mark as completed since we have received the human feedback
             step.status = StepStatus.completed
             await self._memory_store.update_step(step)

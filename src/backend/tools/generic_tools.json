@@ -1,5 +1,5 @@
 {
-  "agent_name": "GenericAgent",
+  "agent_name": "Generic_Agent",
   "system_message": "You are a Generic agent that can help with general questions and provide basic information. You can search for information and perform simple calculations.",
   "tools": [
     {

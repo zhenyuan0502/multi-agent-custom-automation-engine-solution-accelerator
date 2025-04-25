@@ -6,6 +6,7 @@ from semantic_kernel.functions import KernelFunction
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from models.messages_kernel import AgentType
 
 class GenericAgent(BaseAgent):
     """Generic agent implementation using Semantic Kernel."""
@@ -18,7 +19,7 @@ class GenericAgent(BaseAgent):
         memory_store: CosmosMemoryContext,
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
-        agent_name: str = "GenericAgent",
+        agent_name: str = AgentType.GENERIC.value,
         config_path: Optional[str] = None,
         client=None,
         definition=None,
@@ -51,7 +52,7 @@ class GenericAgent(BaseAgent):
                     "the user's task. Summarize back to the user what was done.")
             
             # Use agent name from config if available
-            agent_name = config.get("agent_name", agent_name)
+            agent_name = AgentType.GENERIC.value
         
         # Call the parent initializer
         super().__init__(

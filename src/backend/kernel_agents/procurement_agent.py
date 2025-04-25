@@ -5,6 +5,7 @@ from semantic_kernel.functions import KernelFunction
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from models.messages_kernel import AgentType
 
 class ProcurementAgent(BaseAgent):
     """Procurement agent implementation using Semantic Kernel.
@@ -22,7 +23,7 @@ class ProcurementAgent(BaseAgent):
         memory_store: CosmosMemoryContext,
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
-        agent_name: str = "ProcurementAgent",
+        agent_name: str = AgentType.PROCUREMENT.value,
         config_path: Optional[str] = None,
         client=None,
         definition=None,
@@ -55,7 +56,7 @@ class ProcurementAgent(BaseAgent):
                 )
             
             # Use agent name from config if available
-            agent_name = config.get("agent_name", agent_name)
+            agent_name = AgentType.PROCUREMENT.value
         
         super().__init__(
             agent_name=agent_name,

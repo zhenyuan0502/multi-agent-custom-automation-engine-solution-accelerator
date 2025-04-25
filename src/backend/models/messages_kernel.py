@@ -40,15 +40,15 @@ class DataType(str, Enum):
 class AgentType(str, Enum):
     """Enumeration of agent types."""
     
-    human_agent = "HumanAgent"
-    hr_agent = "HrAgent"
-    marketing_agent = "MarketingAgent"
-    procurement_agent = "ProcurementAgent"
-    product_agent = "ProductAgent"
-    generic_agent = "GenericAgent"
-    tech_support_agent = "TechSupportAgent"
-    group_chat_manager = "GroupChatManager"
-    planner_agent = "PlannerAgent"
+    HUMAN= "Human_Agent"
+    HR = "Hr_Agent"
+    MARKETING = "Marketing_Agent"
+    PROCUREMENT = "Procurement_Agent"
+    PRODUCT = "Product_Agent"
+    GENERIC = "Generic_Agent"
+    TECH_SUPPORT= "Tech_Support_Agent"
+    GROUP_CHAT_MANAGER = "Group_Chat_Manager"
+    PLANNER = "Planner_Agent"
     
     # Add other agents as needed
 
@@ -173,7 +173,7 @@ class Plan(BaseDataModel):
     user_id: str
     initial_goal: str
     overall_status: PlanStatus = PlanStatus.in_progress
-    source: str = "PlannerAgent"
+    source: str = AgentType.PLANNER.value
     summary: Optional[str] = None
     human_clarification_request: Optional[str] = None
     human_clarification_response: Optional[str] = None

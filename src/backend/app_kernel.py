@@ -37,7 +37,7 @@ from models.messages_kernel import (
 )
 from utils_kernel import initialize_runtime_and_context, get_agents, rai_success
 from event_utils import track_event_if_configured
-from models.agent_types import AgentType
+from models.messages_kernel import AgentType
 from kernel_agents.agent_factory import AgentFactory
 
 # # Check if the Application Insights Instrumentation Key is set in the environment variables
@@ -242,7 +242,7 @@ async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Reques
     agents = await get_agents(human_feedback.session_id, user_id)
     
     # Send the feedback to the human agent
-    human_agent = agents["HumanAgent"]
+    human_agent = agents[AgentType.HUMAN.value]
     
     # Convert feedback to JSON for the kernel function
     human_feedback_json = human_feedback.json()
@@ -325,7 +325,7 @@ async def human_clarification_endpoint(
     agents = await get_agents(human_clarification.session_id, user_id)
     
     # Send the clarification to the planner agent
-    planner_agent = agents["PlannerAgent"]
+    planner_agent = agents[AgentType.PLANNER.value]
     
     # Convert clarification to JSON for proper processing
     human_clarification_json = human_clarification.json()
@@ -419,7 +419,7 @@ async def approve_step_endpoint(
     human_feedback_json = human_feedback.json()
     
     # First process with HumanAgent to update step status
-    human_agent = agents["HumanAgent"]
+    human_agent = agents[AgentType.HUMAN.value]
     await human_agent.handle_human_feedback(
         KernelArguments(human_feedback_json=human_feedback_json)
     )

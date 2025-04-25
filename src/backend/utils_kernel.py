@@ -15,8 +15,17 @@ from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 from kernel_agents.agent_factory import AgentFactory
 from app_config import config
 from context.cosmos_memory_kernel import CosmosMemoryContext
-from models.agent_types import AgentType
+from models.messages_kernel import AgentType
 
+from kernel_agents.hr_agent import HrAgent
+from kernel_agents.human_agent import HumanAgent 
+from kernel_agents.marketing_agent import MarketingAgent
+from kernel_agents.generic_agent import GenericAgent
+from kernel_agents.tech_support_agent import TechSupportAgent
+from kernel_agents.procurement_agent import ProcurementAgent
+from kernel_agents.product_agent import ProductAgent
+from kernel_agents.planner_agent import PlannerAgent  
+from kernel_agents.group_chat_manager import GroupChatManager
 logging.basicConfig(level=logging.INFO)
 
 # Cache for agent instances by session
@@ -74,15 +83,15 @@ async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
         
         # Get mapping of agent types to class names
         agent_classes = {
-            AgentType.HR: "HrAgent",
-            AgentType.PRODUCT: "ProductAgent",
-            AgentType.MARKETING: "MarketingAgent",
-            AgentType.PROCUREMENT: "ProcurementAgent",
-            AgentType.TECH_SUPPORT: "TechSupportAgent",
-            AgentType.GENERIC: "GenericAgent",
-            AgentType.HUMAN: "HumanAgent",
-            AgentType.PLANNER: "PlannerAgent",  # Add PlannerAgent
-            AgentType.GROUP_CHAT_MANAGER: "GroupChatManager",  # Add GroupChatManager
+            AgentType.HR: HrAgent.__name__,
+            AgentType.PRODUCT: ProductAgent.__name__,
+            AgentType.MARKETING: MarketingAgent.__name__,
+            AgentType.PROCUREMENT: ProcurementAgent.__name__,
+            AgentType.TECH_SUPPORT: TechSupportAgent.__name__,
+            AgentType.GENERIC: TechSupportAgent.__name__,
+            AgentType.HUMAN: HumanAgent.__name__,
+            AgentType.PLANNER: PlannerAgent.__name__,
+            AgentType.GROUP_CHAT_MANAGER: GroupChatManager.__name__,
         }
         
         # Convert to the agent name dictionary format used by the rest of the app

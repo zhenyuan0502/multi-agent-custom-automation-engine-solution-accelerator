@@ -5,6 +5,7 @@ from semantic_kernel.functions import KernelFunction
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from models.messages_kernel import AgentType
 
 class ProductAgent(BaseAgent):
     """Product agent implementation using Semantic Kernel.
@@ -23,7 +24,7 @@ class ProductAgent(BaseAgent):
         memory_store: CosmosMemoryContext,
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
-        agent_name: str = "ProductAgent",
+        agent_name: str = AgentType.PRODUCT.value,
         config_path: Optional[str] = None,
         client=None,
         definition=None,
@@ -56,7 +57,7 @@ class ProductAgent(BaseAgent):
                 )
             
             # Use agent name from config if available
-            agent_name = config.get("agent_name", agent_name)
+            agent_name = AgentType.PRODUCT.value
         
         super().__init__(
             agent_name=agent_name,

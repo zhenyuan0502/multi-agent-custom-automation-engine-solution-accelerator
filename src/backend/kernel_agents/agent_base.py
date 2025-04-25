@@ -457,11 +457,11 @@ class BaseAgent(AzureAIAgent):
         return kernel_wrapper
 
     @staticmethod
-    def load_tools_config(agent_type: str, config_path: Optional[str] = None) -> Dict[str, Any]:
+    def load_tools_config(filename: str, config_path: Optional[str] = None) -> Dict[str, Any]:
         """Load tools configuration from a JSON file.
         
         Args:
-            agent_type: The type of agent (e.g., "marketing", "hr")
+            filename: The filename without extension (e.g., "hr", "marketing")
             config_path: Optional explicit path to the configuration file
             
         Returns:
@@ -471,16 +471,26 @@ class BaseAgent(AzureAIAgent):
             # Default path relative to the tools directory
             current_dir = os.path.dirname(os.path.abspath(__file__))
             backend_dir = os.path.dirname(current_dir)  # Just one level up to get to backend dir
-            config_path = os.path.join(backend_dir, "tools", f"{agent_type}_tools.json")
+            
+            # Normalize filename to avoid issues with spaces and capitalization
+            # Convert "Hr Agent" to "hr" and "TechSupport Agent" to "tech_support"
+            logging.debug(f"Normalizing filename: {filename}")
+            normalized_filename = filename.replace(" ", "_").replace("-", "_").lower()
+            # If it ends with "_agent", remove it
+            if normalized_filename.endswith("_agent"):
+                normalized_filename = normalized_filename[:-6]
+            logging
+            config_path = os.path.join(backend_dir, "tools", f"{normalized_filename}_tools.json")
+            logging.debug(f"Looking for tools config at: {config_path}")
         
         try:
             with open(config_path, "r") as f:
                 return json.load(f)
         except Exception as e:
-            logging.error(f"Error loading {agent_type} tools configuration: {e}")
+            logging.error(f"Error loading {filename} tools configuration: {e}")
             # Return empty default configuration
             return {
-                "agent_name": f"{agent_type.capitalize()}Agent",
+                "agent_name": f"{filename.capitalize()}Agent",
                 "system_message": "You are an AI assistant",
                 "tools": []
             }

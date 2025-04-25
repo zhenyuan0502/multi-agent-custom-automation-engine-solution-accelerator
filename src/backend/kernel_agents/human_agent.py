@@ -7,7 +7,7 @@ from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
-from models.messages_kernel import HumanFeedback, Step, StepStatus, AgentMessage, ActionRequest
+from models.messages_kernel import AgentType, HumanFeedback, Step, StepStatus, AgentMessage, ActionRequest
 from event_utils import track_event_if_configured
 
 class HumanAgent(BaseAgent):
@@ -25,7 +25,7 @@ class HumanAgent(BaseAgent):
         memory_store: CosmosMemoryContext,
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
-        agent_name: str = "HumanAgent",
+        agent_name: str = AgentType.HUMAN.value,
         config_path: Optional[str] = None,
         client=None,
         definition=None,
@@ -53,7 +53,7 @@ class HumanAgent(BaseAgent):
                     "system_message", 
                     "You are representing a human user in the conversation. You handle interactions that require human feedback or input."
                 )
-            agent_name = config.get("agent_name", agent_name)
+            agent_name = AgentType.HUMAN.value
         
         super().__init__(
             agent_name=agent_name,
@@ -109,7 +109,7 @@ class HumanAgent(BaseAgent):
                 user_id=self._user_id,
                 plan_id=step.plan_id,
                 content=f"Received feedback for step: {step.action}",
-                source="HumanAgent",
+                source=AgentType.HUMAN.value,
                 step_id=human_feedback.step_id,
             )
         )
@@ -122,7 +122,7 @@ class HumanAgent(BaseAgent):
                 "user_id": self._user_id,
                 "plan_id": step.plan_id,
                 "content": f"Received feedback for step: {step.action}",
-                "source": "HumanAgent",
+                "source": AgentType.HUMAN.value,
                 "step_id": human_feedback.step_id,
             },
         )

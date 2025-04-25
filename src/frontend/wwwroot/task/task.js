@@ -113,7 +113,16 @@
   };
 
   const toDateTime = (timestamp) => {
-    const date = new Date(timestamp * 1000);
+    // Handle ISO date string format (e.g., 2025-04-25T03:01:13.093260)
+    // instead of Unix timestamp
+    const date = new Date(timestamp);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.warn("Invalid date format:", timestamp);
+      return "Invalid date";
+    }
+    
     const options = { month: "short", day: "numeric" };
     const timeOptions = { hour: "numeric", minute: "numeric", hour12: true };
     return `${date.toLocaleDateString(
@@ -215,7 +224,7 @@
 
     taskStatusDetails.innerHTML = `
             <p class="mb-3"><strong>Summary:</strong> ${task.summary}</p>
-            <p><strong>Created:</strong> ${toDateTime(task.ts)}</p>
+            <p><strong>Created:</strong> ${toDateTime(task.timestamp)}</p>
         `;
   };
 
@@ -512,7 +521,7 @@
                                                 ${toAgentName(
                                                   message.source
                                                 )} • ${toDateTime(
-                  message.ts
+                  message.timestamp
                 )} AI-generated content may be incorrect
                                             </div>
                                             <div class="notification is-light mt-1">
@@ -527,7 +536,7 @@
                                     <div class="media-content">
                                         <div class="content">
                                             <div class="is-size-7 has-text-weight-medium has-text-grey is-flex is-justify-content-end">
-                                                You • ${toDateTime(message.ts)}
+                                                You • ${toDateTime(message.timestamp)}
                                             </div>
                                             <div class="notification is-info is-light mt-1 is-pulled-right">
                                                 ${markdownConverter.makeHtml(

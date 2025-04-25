@@ -8,14 +8,14 @@ from semantic_kernel.functions import KernelFunction
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 import inspect
 
-from models.agent_types import AgentType
 from kernel_agents.agent_base import BaseAgent
+
 # Import the new AppConfig instance
 from app_config import config
 
 # Import all specialized agent implementations
 from kernel_agents.hr_agent import HrAgent
-from kernel_agents.human_agent import HumanAgent 
+from kernel_agents.human_agent import HumanAgent
 from kernel_agents.marketing_agent import MarketingAgent
 from kernel_agents.generic_agent import GenericAgent
 from kernel_agents.tech_support_agent import TechSupportAgent
@@ -25,12 +25,13 @@ from kernel_agents.planner_agent import PlannerAgent  # Add PlannerAgent import
 from kernel_agents.group_chat_manager import GroupChatManager
 from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
 from context.cosmos_memory_kernel import CosmosMemoryContext
-from models.messages_kernel import PlannerResponsePlan
+from models.messages_kernel import PlannerResponsePlan, AgentType
 
 from azure.ai.projects.models import (
     ResponseFormatJsonSchema,
     ResponseFormatJsonSchemaType,
 )
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,21 +47,21 @@ class AgentFactory:
         AgentType.TECH_SUPPORT: TechSupportAgent,
         AgentType.GENERIC: GenericAgent,
         AgentType.HUMAN: HumanAgent,
-        AgentType.PLANNER: PlannerAgent,  # Add PlannerAgent
+        AgentType.PLANNER: PlannerAgent,
         AgentType.GROUP_CHAT_MANAGER: GroupChatManager,  # Add GroupChatManager
     }
 
     # Mapping of agent types to their string identifiers (for automatic tool loading)
     _agent_type_strings: Dict[AgentType, str] = {
-        AgentType.HR: "hr",
-        AgentType.MARKETING: "marketing",
-        AgentType.PRODUCT: "product",
-        AgentType.PROCUREMENT: "procurement",
-        AgentType.TECH_SUPPORT: "tech_support",
-        AgentType.GENERIC: "generic",
-        AgentType.HUMAN: "human",
-        AgentType.PLANNER: "planner",  # Add planner
-        AgentType.GROUP_CHAT_MANAGER: "group_chat_manager",  # Add group_chat_manager
+        AgentType.HR: AgentType.HR.value,
+        AgentType.MARKETING: AgentType.MARKETING.value,
+        AgentType.PRODUCT: AgentType.PRODUCT.value,
+        AgentType.PROCUREMENT: AgentType.PROCUREMENT.value,
+        AgentType.TECH_SUPPORT: AgentType.TECH_SUPPORT.value,
+        AgentType.GENERIC: AgentType.GENERIC.value,
+        AgentType.HUMAN: AgentType.HUMAN.value,
+        AgentType.PLANNER: AgentType.PLANNER.value,
+        AgentType.GROUP_CHAT_MANAGER: AgentType.GROUP_CHAT_MANAGER.value,
     }
 
     # System messages for each agent type
@@ -78,17 +79,20 @@ class AgentFactory:
 
     # Cache of agent instances by session_id and agent_type
     _agent_cache: Dict[str, Dict[AgentType, BaseAgent]] = {}
-    
+
     # Cache of Azure AI Agent instances
     _azure_ai_agent_cache: Dict[str, Dict[str, AzureAIAgent]] = {}
 
     @classmethod
     def register_agent_class(
-        cls, agent_type: AgentType, agent_class: Type[BaseAgent], agent_type_string: Optional[str] = None,
-        system_message: Optional[str] = None
+        cls,
+        agent_type: AgentType,
+        agent_class: Type[BaseAgent],
+        agent_type_string: Optional[str] = None,
+        system_message: Optional[str] = None,
     ) -> None:
         """Register a new agent class with the factory.
-        
+
         Args:
             agent_type: The type of agent to register
             agent_class: The class to use for this agent type
@@ -113,10 +117,10 @@ class AgentFactory:
         temperature: float = 0.0,
         system_message: Optional[str] = None,
         response_format: Optional[Any] = None,
-        **kwargs
+        **kwargs,
     ) -> BaseAgent:
         """Create an agent of the specified type.
-        
+
         Args:
             agent_type: The type of agent to create
             session_id: The session ID
@@ -124,52 +128,59 @@ class AgentFactory:
             temperature: The temperature to use for the agent
             system_message: Optional system message for the agent
             **kwargs: Additional parameters to pass to the agent constructor
-            
+
         Returns:
             An instance of the specified agent type
-            
+
         Raises:
             ValueError: If the agent type is unknown
         """
         # Check if we already have an agent in the cache
-        if session_id in cls._agent_cache and agent_type in cls._agent_cache[session_id]:
+        if (
+            session_id in cls._agent_cache
+            and agent_type in cls._agent_cache[session_id]
+        ):
             return cls._agent_cache[session_id][agent_type]
 
         # Get the agent class
         agent_class = cls._agent_classes.get(agent_type)
         if not agent_class:
             raise ValueError(f"Unknown agent type: {agent_type}")
-            
+
         # Create memory store
         memory_store = CosmosMemoryContext(session_id, user_id)
-        
+
         # Create a kernel using the AppConfig instance
         kernel = config.create_kernel()
-        
+
         # Use default system message if none provided
         if system_message is None:
             system_message = cls._agent_system_messages.get(
-                agent_type, 
-                f"You are a helpful AI assistant specialized in {cls._agent_type_strings.get(agent_type, 'general')} tasks."
+                agent_type,
+                f"You are a helpful AI assistant specialized in {cls._agent_type_strings.get(agent_type, 'general')} tasks.",
             )
-        
+
         # For other agent types, use the standard tool loading mechanism
-        agent_type_str = cls._agent_type_strings.get(agent_type, agent_type.value.lower())
+        agent_type_str = cls._agent_type_strings.get(
+            agent_type, agent_type.value.lower()
+        )
         tools = await cls._load_tools_for_agent(kernel, agent_type_str)
-        
+
         # Build the agent definition (functions schema)
         definition = None
         client = None
-        
+
         try:
             client = config.get_ai_project_client()
         except Exception as client_exc:
             logger.error(f"Error creating AIProjectClient: {client_exc}")
             if agent_type == AgentType.GROUP_CHAT_MANAGER:
-                logger.info(f"Continuing with GroupChatManager creation despite AIProjectClient error")
+                logger.info(
+                    f"Continuing with GroupChatManager creation despite AIProjectClient error"
+                )
             else:
                 raise
-                
+
         try:
             # Create the agent definition using the AIProjectClient (project-based pattern)
             # For GroupChatManager, create a definition with minimal configuration
@@ -179,41 +190,57 @@ class AgentFactory:
                     name=agent_type_str,
                     instructions=system_message,
                     temperature=temperature,
-                    response_format=response_format  # Add response_format if required
+                    response_format=response_format,  # Add response_format if required
                 )
-                logger.info(f"Successfully created agent definition for {agent_type_str}")
+                logger.info(
+                    f"Successfully created agent definition for {agent_type_str}"
+                )
         except Exception as agent_exc:
-            logger.error(f"Error creating agent definition with AIProjectClient for {agent_type_str}: {agent_exc}")
+            logger.error(
+                f"Error creating agent definition with AIProjectClient for {agent_type_str}: {agent_exc}"
+            )
             if agent_type == AgentType.GROUP_CHAT_MANAGER:
-                logger.info(f"Continuing with GroupChatManager creation despite definition error")
+                logger.info(
+                    f"Continuing with GroupChatManager creation despite definition error"
+                )
             else:
                 raise
-        
+
         # Create the agent instance using the project-based pattern
         try:
             # Filter kwargs to only those accepted by the agent's __init__
             agent_init_params = inspect.signature(agent_class.__init__).parameters
             valid_keys = set(agent_init_params.keys()) - {"self"}
-            filtered_kwargs = {k: v for k, v in {
-                "agent_name": agent_type_str,
-                "kernel": kernel,
-                "session_id": session_id,
-                "user_id": user_id,
-                "memory_store": memory_store,
-                "tools": tools,
-                "system_message": system_message,
-                "client": client,
-                "definition": definition,
-                **kwargs
-            }.items() if k in valid_keys}
+            filtered_kwargs = {
+                k: v
+                for k, v in {
+                    "agent_name": agent_type_str,
+                    "kernel": kernel,
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "memory_store": memory_store,
+                    "tools": tools,
+                    "system_message": system_message,
+                    "client": client,
+                    "definition": definition,
+                    **kwargs,
+                }.items()
+                if k in valid_keys
+            }
             agent = agent_class(**filtered_kwargs)
             logger.debug(f"[DEBUG] Agent object after instantiation: {agent}")
             # Initialize the agent asynchronously if it has async_init
-            if hasattr(agent, 'async_init') and inspect.iscoroutinefunction(agent.async_init):
+            if hasattr(agent, "async_init") and inspect.iscoroutinefunction(
+                agent.async_init
+            ):
                 init_result = await agent.async_init()
                 logger.debug(f"[DEBUG] Result of agent.async_init(): {init_result}")
             # Register tools with Azure AI Agent for LLM function calls
-            if hasattr(agent, '_agent') and hasattr(agent._agent, 'add_function') and tools:
+            if (
+                hasattr(agent, "_agent")
+                and hasattr(agent._agent, "add_function")
+                and tools
+            ):
                 for fn in tools:
                     agent._agent.add_function(fn)
         except Exception as e:
@@ -221,25 +248,27 @@ class AgentFactory:
                 f"Error creating agent of type {agent_type} with parameters: {e}"
             )
             raise
-            
+
         # Cache the agent instance
         if session_id not in cls._agent_cache:
             cls._agent_cache[session_id] = {}
         cls._agent_cache[session_id][agent_type] = agent
-        
+
         return agent
 
     @classmethod
-    async def _load_tools_for_agent(cls, kernel: Kernel, agent_type: str) -> List[KernelFunction]:
+    async def _load_tools_for_agent(
+        cls, kernel: Kernel, agent_type: str
+    ) -> List[KernelFunction]:
         """Load tools for an agent from the tools directory.
-        
+
         This tries to load tool configurations from JSON files. If that fails,
         it returns an empty list for agents that don't need tools.
-        
+
         Args:
             kernel: The semantic kernel instance
             agent_type: The agent type string identifier
-            
+
         Returns:
             A list of kernel functions for the agent
         """
@@ -250,102 +279,103 @@ class AgentFactory:
             return tools
         except FileNotFoundError:
             # No tool configuration file found - this is expected for some agents
-            logger.info(f"No tools defined for agent type '{agent_type}'. Returning empty list.")
+            logger.info(
+                f"No tools defined for agent type '{agent_type}'. Returning empty list."
+            )
             return []
         except Exception as e:
             logger.warning(f"Error loading tools for {agent_type}: {e}")
-            
-            # Return an empty list for agents without tools rather than attempting a fallback
-            # Special handling for group_chat_manager which typically doesn't need tools
-            if "group_chat_manager" in agent_type:
-                logger.info(f"No tools needed for {agent_type}. Returning empty list.")
-                return []
-                
+
             # For other agent types, try to create a simple fallback tool
             try:
                 # Use PromptTemplateConfig to create a simple tool
-                
-                
+
                 # Simple minimal prompt
-                prompt = f"""You are a helpful assistant specialized in {agent_type} tasks.
+                prompt = f"""You are a helpful assistant specialized in {agent_type} tasks. User query: {{$input}} Provide a helpful response."""
 
-User query: {{$input}}
-
-Provide a helpful response."""
-                
                 # Create a prompt template config
                 prompt_config = PromptTemplateConfig(
                     template=prompt,
                     name=f"{agent_type}_help_with_tasks",
-                    description=f"A helper function for {agent_type} tasks"
+                    description=f"A helper function for {agent_type} tasks",
                 )
-                
+
                 # Create the function using the prompt_config with explicit plugin_name
                 function = KernelFunction.from_prompt(
                     function_name=f"{agent_type}_help_with_tasks",
                     plugin_name=f"{agent_type}_fallback_plugin",
                     description=f"A helper function for {agent_type} tasks",
-                    prompt_template_config=prompt_config
+                    prompt_template_config=prompt_config,
                 )
-                
+
                 logger.info(f"Created fallback tool for {agent_type}")
                 return [function]
             except Exception as fallback_error:
-                logger.error(f"Failed to create fallback tool for {agent_type}: {fallback_error}")
+                logger.error(
+                    f"Failed to create fallback tool for {agent_type}: {fallback_error}"
+                )
                 # Return an empty list if everything fails - the agent can still function without tools
                 return []
 
     @classmethod
     async def create_all_agents(
-        cls,
-        session_id: str,
-        user_id: str,
-        temperature: float = 0.0
+        cls, session_id: str, user_id: str, temperature: float = 0.0
     ) -> Dict[AgentType, BaseAgent]:
         """Create all agent types for a session.
-        
+
         Args:
             session_id: The session ID
             user_id: The user ID
             temperature: The temperature to use for the agents
-            
+
         Returns:
             Dictionary mapping agent types to agent instances
         """
         # Check if we already have all agents in the cache
-        if session_id in cls._agent_cache and len(cls._agent_cache[session_id]) == len(cls._agent_classes):
+        if session_id in cls._agent_cache and len(cls._agent_cache[session_id]) == len(
+            cls._agent_classes
+        ):
             return cls._agent_cache[session_id]
-            
+
         # Create each agent type in two phases
         # First, create all agents except PlannerAgent and GroupChatManager
         agents = {}
         planner_agent_type = AgentType.PLANNER
         group_chat_manager_type = AgentType.GROUP_CHAT_MANAGER
-        
+
         # Initialize cache for this session if it doesn't exist
         if session_id not in cls._agent_cache:
             cls._agent_cache[session_id] = {}
-        
+
         # Phase 1: Create all agents except planner and group chat manager
-        for agent_type in [at for at in cls._agent_classes.keys() 
-                           if at != planner_agent_type and at != group_chat_manager_type]:
+        for agent_type in [
+            at
+            for at in cls._agent_classes.keys()
+            if at != planner_agent_type and at != group_chat_manager_type
+        ]:
             agents[agent_type] = await cls.create_agent(
                 agent_type=agent_type,
                 session_id=session_id,
                 user_id=user_id,
-                temperature=temperature
+                temperature=temperature,
             )
-        
+
         # Create agent name to instance mapping for the planner
         agent_instances = {}
         for agent_type, agent in agents.items():
-            agent_name = cls._agent_type_strings.get(agent_type).replace("_", "") + "Agent"
-            agent_name = agent_name[0].upper() + agent_name[1:]  # Capitalize first letter
+            agent_name = (
+                cls._agent_type_strings.get(agent_type).replace("_", "") + "Agent"
+            )
+            agent_name = (
+                agent_name[0].upper() + agent_name[1:]
+            )  # Capitalize first letter
             agent_instances[agent_name] = agent
-        
+
         # Log the agent instances for debugging
-        logger.debug(f"Created {len(agent_instances)} agent instances for planner: {', '.join(agent_instances.keys())}")
-        
+        logger.debug(
+            f"Created {len(agent_instances)} agent instances for planner: {', '.join(agent_instances.keys())}"
+        )
+
         # Phase 2: Create the planner agent with agent_instances
         planner_agent = await cls.create_agent(
             agent_type=planner_agent_type,
@@ -354,37 +384,37 @@ Provide a helpful response."""
             temperature=temperature,
             agent_instances=agent_instances,  # Pass agent instances to the planner
             response_format=ResponseFormatJsonSchemaType(
-                    json_schema=ResponseFormatJsonSchema(
-            name=PlannerResponsePlan.__name__,
-            description=f"respond with {PlannerResponsePlan.__name__.lower()}",
-            schema=PlannerResponsePlan.model_json_schema(),
-        )
-    )
+                json_schema=ResponseFormatJsonSchema(
+                    name=PlannerResponsePlan.__name__,
+                    description=f"respond with {PlannerResponsePlan.__name__.lower()}",
+                    schema=PlannerResponsePlan.model_json_schema(),
+                )
+            ),
         )
         agents[planner_agent_type] = planner_agent
-        
+
         # Phase 3: Create group chat manager with all agents including the planner
         group_chat_manager = await cls.create_agent(
             agent_type=group_chat_manager_type,
             session_id=session_id,
             user_id=user_id,
             temperature=temperature,
-            available_agents=agent_instances  # Pass all agents to group chat manager
+            available_agents=agent_instances,  # Pass all agents to group chat manager
         )
         agents[group_chat_manager_type] = group_chat_manager
-        
+
         return agents
-        
+
     @classmethod
     def get_agent_class(cls, agent_type: AgentType) -> Type[BaseAgent]:
         """Get the agent class for the specified type.
-        
+
         Args:
             agent_type: The agent type
-            
+
         Returns:
             The agent class
-            
+
         Raises:
             ValueError: If the agent type is unknown
         """
@@ -392,11 +422,11 @@ Provide a helpful response."""
         if not agent_class:
             raise ValueError(f"Unknown agent type: {agent_type}")
         return agent_class
-        
+
     @classmethod
     def clear_cache(cls, session_id: Optional[str] = None) -> None:
         """Clear the agent cache.
-        
+
         Args:
             session_id: If provided, clear only this session's cache
         """
