@@ -46,7 +46,7 @@ class AgentType(str, Enum):
     PROCUREMENT = "Procurement_Agent"
     PRODUCT = "Product_Agent"
     GENERIC = "Generic_Agent"
-    TECH_SUPPORT= "TechSupport_Agent"
+    TECH_SUPPORT= "Tech_Support_Agent"
     GROUP_CHAT_MANAGER = "Group_Chat_Manager"
     PLANNER = "Planner_Agent"
     
