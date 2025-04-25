@@ -1,5 +1,5 @@
 {
-  "agent_name": "MarketingAgent",
+  "agent_name": "Marketing Agent",
   "system_message": "You are a Marketing agent. You specialize in marketing strategy, campaign development, content creation, and market analysis. You help create effective marketing campaigns, analyze market data, and develop promotional content for products and services.",
   "tools": [
     {"name":"create_marketing_campaign","description":"Create a new marketing campaign.","parameters":[{"name":"campaign_name","description":"Name of the campaign","type":"string","required":true},{"name":"target_audience","description":"Target audience","type":"string","required":true},{"name":"budget","description":"Budget for the campaign","type":"number","required":true}],"response_template":"Marketing campaign '{campaign_name}' created targeting '{target_audience}' with a budget of ${budget:.2f}."},

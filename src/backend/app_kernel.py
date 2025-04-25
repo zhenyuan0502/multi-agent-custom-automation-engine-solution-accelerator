@@ -242,7 +242,7 @@ async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Reques
     agents = await get_agents(human_feedback.session_id, user_id)
     
     # Send the feedback to the human agent
-    human_agent = agents["HumanAgent"]
+    human_agent = agents[AgentType.HUMAN.value]
     
     # Convert feedback to JSON for the kernel function
     human_feedback_json = human_feedback.json()
@@ -325,7 +325,7 @@ async def human_clarification_endpoint(
     agents = await get_agents(human_clarification.session_id, user_id)
     
     # Send the clarification to the planner agent
-    planner_agent = agents["PlannerAgent"]
+    planner_agent = agents[AgentType.PLANNER.value]
     
     # Convert clarification to JSON for proper processing
     human_clarification_json = human_clarification.json()
@@ -419,7 +419,7 @@ async def approve_step_endpoint(
     human_feedback_json = human_feedback.json()
     
     # First process with HumanAgent to update step status
-    human_agent = agents["HumanAgent"]
+    human_agent = agents[AgentType.HUMAN.value]
     await human_agent.handle_human_feedback(
         KernelArguments(human_feedback_json=human_feedback_json)
     )

@@ -55,7 +55,7 @@ class HrAgent(BaseAgent):
                 )
             
             # Use agent name from config if available
-            agent_name = AgentType.HUMAN.value
+            agent_name = AgentType.HR.value
         
         super().__init__(
             agent_name=agent_name,

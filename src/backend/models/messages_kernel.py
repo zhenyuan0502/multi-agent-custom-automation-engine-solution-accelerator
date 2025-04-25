@@ -173,7 +173,7 @@ class Plan(BaseDataModel):
     user_id: str
     initial_goal: str
     overall_status: PlanStatus = PlanStatus.in_progress
-    source: str = "PlannerAgent"
+    source: str = AgentType.PLANNER.value
     summary: Optional[str] = None
     human_clarification_request: Optional[str] = None
     human_clarification_response: Optional[str] = None

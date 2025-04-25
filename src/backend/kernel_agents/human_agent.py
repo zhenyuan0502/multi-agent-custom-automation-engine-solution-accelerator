@@ -109,7 +109,7 @@ class HumanAgent(BaseAgent):
                 user_id=self._user_id,
                 plan_id=step.plan_id,
                 content=f"Received feedback for step: {step.action}",
-                source="HumanAgent",
+                source=AgentType.HUMAN.value,
                 step_id=human_feedback.step_id,
             )
         )
@@ -122,7 +122,7 @@ class HumanAgent(BaseAgent):
                 "user_id": self._user_id,
                 "plan_id": step.plan_id,
                 "content": f"Received feedback for step: {step.action}",
-                "source": "HumanAgent",
+                "source": AgentType.HUMAN.value,
                 "step_id": human_feedback.step_id,
             },
         )

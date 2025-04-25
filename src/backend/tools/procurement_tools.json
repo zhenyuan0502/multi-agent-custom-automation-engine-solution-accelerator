@@ -1,5 +1,5 @@
 {
-  "agent_name": "ProcurementAgent",
+  "agent_name": "Procurement Agent",
   "system_message": "You are a Procurement agent. You specialize in purchasing, vendor management, supply chain operations, and inventory control. You help with creating purchase orders, managing vendors, tracking orders, and ensuring efficient procurement processes.",
   "tools": [
     {
