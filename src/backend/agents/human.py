@@ -13,6 +13,7 @@ from src.backend.models.messages import (
     Step,
 )
 from src.backend.event_utils import track_event_if_configured
+from models.messages_kernel import AgentType
 
 
 @default_subscription
@@ -52,7 +53,7 @@ class HumanAgent(RoutedAgent):
                 user_id=self.user_id,
                 plan_id=step.plan_id,
                 content=f"Received feedback for step: {step.action}",
-                source="HumanAgent",
+                source=AgentType.HUMAN.value,
                 step_id=message.step_id,
             )
         )
@@ -64,7 +65,7 @@ class HumanAgent(RoutedAgent):
                 "user_id": self.user_id,
                 "plan_id": step.plan_id,
                 "content": f"Received feedback for step: {step.action}",
-                "source": "HumanAgent",
+                "source": AgentType.HUMAN.value,
                 "step_id": message.step_id,
             },
         )

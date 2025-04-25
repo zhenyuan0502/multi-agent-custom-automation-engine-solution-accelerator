@@ -222,9 +222,9 @@ class GroupChatManagerIntegrationTest(unittest.TestCase):
         
         # Create agent dictionary for the group chat manager
         available_agents = {
-            "PlannerAgent": planner_agent,
-            "HumanAgent": human_agent,
-            "GenericAgent": generic_agent
+            "planner_agent": planner_agent,
+            "human_agent": human_agent,
+            "generic_agent": generic_agent
         }
         
         # Create the group chat manager

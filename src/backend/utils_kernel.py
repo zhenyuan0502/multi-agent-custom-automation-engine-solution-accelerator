@@ -95,7 +95,7 @@ async def get_agents(session_id: str, user_id: str) -> Dict[str, Any]:
         }
         
         # Convert to the agent name dictionary format used by the rest of the app
-        agents = {agent_classes[agent_type]: agent for agent_type, agent in raw_agents.items()}
+        agents = {agent_type.value: agent for agent_type, agent in raw_agents.items()}
         
         # Cache the agents
         agent_instances[cache_key] = agents
