@@ -1,5 +1,5 @@
 {
-  "agent_name": "Planner Agent",
+  "agent_name": "Planner_Agent",
   "system_message": "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents.",
   "tools": [
     {

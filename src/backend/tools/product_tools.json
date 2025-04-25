@@ -1,5 +1,5 @@
 {
-  "agent_name": "Product Agent",
+  "agent_name": "Product_Agent",
   "system_message": "You are a Product agent. You have knowledge about product management, development, and compliance guidelines. When asked to call a function, you should summarize back what was done.",
   "tools": [
     {
