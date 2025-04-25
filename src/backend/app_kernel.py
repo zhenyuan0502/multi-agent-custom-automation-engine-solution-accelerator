@@ -37,7 +37,7 @@ from models.messages_kernel import (
 )
 from utils_kernel import initialize_runtime_and_context, get_agents, rai_success
 from event_utils import track_event_if_configured
-from models.agent_types import AgentType
+from models.messages_kernel import AgentType
 from kernel_agents.agent_factory import AgentFactory
 
 # # Check if the Application Insights Instrumentation Key is set in the environment variables

@@ -8,7 +8,6 @@ from semantic_kernel.functions import KernelFunction
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 import inspect
 
-from models.agent_types import AgentType
 from kernel_agents.agent_base import BaseAgent
 # Import the new AppConfig instance
 from app_config import config
@@ -25,7 +24,7 @@ from kernel_agents.planner_agent import PlannerAgent  # Add PlannerAgent import
 from kernel_agents.group_chat_manager import GroupChatManager
 from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
 from context.cosmos_memory_kernel import CosmosMemoryContext
-from models.messages_kernel import PlannerResponsePlan
+from models.messages_kernel import PlannerResponsePlan, AgentType
 
 from azure.ai.projects.models import (
     ResponseFormatJsonSchema,
@@ -46,21 +45,21 @@ class AgentFactory:
         AgentType.TECH_SUPPORT: TechSupportAgent,
         AgentType.GENERIC: GenericAgent,
         AgentType.HUMAN: HumanAgent,
-        AgentType.PLANNER: PlannerAgent,  # Add PlannerAgent
+        AgentType.PLANNER: PlannerAgent,  
         AgentType.GROUP_CHAT_MANAGER: GroupChatManager,  # Add GroupChatManager
     }
 
     # Mapping of agent types to their string identifiers (for automatic tool loading)
     _agent_type_strings: Dict[AgentType, str] = {
-        AgentType.HR: "hr",
-        AgentType.MARKETING: "marketing",
-        AgentType.PRODUCT: "product",
-        AgentType.PROCUREMENT: "procurement",
-        AgentType.TECH_SUPPORT: "tech_support",
-        AgentType.GENERIC: "generic",
-        AgentType.HUMAN: "human",
-        AgentType.PLANNER: "planner",  # Add planner
-        AgentType.GROUP_CHAT_MANAGER: "group_chat_manager",  # Add group_chat_manager
+        AgentType.HR: AgentType.HR.value,
+        AgentType.MARKETING: AgentType.MARKETING.value,
+        AgentType.PRODUCT: AgentType.PRODUCT.value,
+        AgentType.PROCUREMENT: AgentType.PROCUREMENT.value,
+        AgentType.TECH_SUPPORT:AgentType.TECH_SUPPORT.value,
+        AgentType.GENERIC: AgentType.GENERIC.value,
+        AgentType.HUMAN: AgentType.HUMAN.value,
+        AgentType.PLANNER: AgentType.PLANNER.value,  
+        AgentType.GROUP_CHAT_MANAGER: AgentType.GROUP_CHAT_MANAGER.value,
     }
 
     # System messages for each agent type
@@ -255,23 +254,14 @@ class AgentFactory:
         except Exception as e:
             logger.warning(f"Error loading tools for {agent_type}: {e}")
             
-            # Return an empty list for agents without tools rather than attempting a fallback
-            # Special handling for group_chat_manager which typically doesn't need tools
-            if "group_chat_manager" in agent_type:
-                logger.info(f"No tools needed for {agent_type}. Returning empty list.")
-                return []
-                
+
             # For other agent types, try to create a simple fallback tool
             try:
                 # Use PromptTemplateConfig to create a simple tool
                 
                 
                 # Simple minimal prompt
-                prompt = f"""You are a helpful assistant specialized in {agent_type} tasks.
-
-User query: {{$input}}
-
-Provide a helpful response."""
+                prompt = f"""You are a helpful assistant specialized in {agent_type} tasks. User query: {{$input}} Provide a helpful response."""
                 
                 # Create a prompt template config
                 prompt_config = PromptTemplateConfig(

@@ -43,7 +43,7 @@ from models.messages_kernel import (
     InputTask,
     Plan,
 )
-from models.agent_types import AgentType
+from models.messages_kernel import AgentType
 from event_utils import track_event_if_configured
 
 
