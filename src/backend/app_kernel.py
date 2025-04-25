@@ -83,7 +83,7 @@ app.add_middleware(HealthCheckMiddleware, password="", checks={})
 logging.info("Added health check middleware")
 
 
-@app.post("/input_task")
+@app.post("/api/input_task")
 async def input_task_endpoint(input_task: InputTask, request: Request):
     """
     Receive the initial input task from the user.
@@ -175,7 +175,7 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
         raise HTTPException(status_code=400, detail="Error creating plan")
 
 
-@app.post("/human_feedback")
+@app.post("/api/human_feedback")
 async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Request):
     
     """
@@ -268,7 +268,7 @@ async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Reques
     }
 
 
-@app.post("/human_clarification_on_plan")
+@app.post("/api/human_clarification_on_plan")
 async def human_clarification_endpoint(
     human_clarification: HumanClarification, request: Request
 ):
@@ -349,7 +349,7 @@ async def human_clarification_endpoint(
     }
 
 
-@app.post("/approve_step_or_steps")
+@app.post("/api/approve_step_or_steps")
 async def approve_step_endpoint(
     human_feedback: HumanFeedback, request: Request
 ) -> Dict[str, str]:
@@ -453,7 +453,7 @@ async def approve_step_endpoint(
         return {"status": "All steps approved"}
 
 
-@app.get("/plans", response_model=List[PlanWithSteps])
+@app.get("/api/plans", response_model=List[PlanWithSteps])
 async def get_plans(
     request: Request, session_id: Optional[str] = Query(None)
 ) -> List[PlanWithSteps]:
@@ -553,7 +553,7 @@ async def get_plans(
     return list_of_plans_with_steps
 
 
-@app.get("/steps/{plan_id}", response_model=List[Step])
+@app.get("/api/steps/{plan_id}", response_model=List[Step])
 async def get_steps_by_plan(plan_id: str, request: Request) -> List[Step]:
     """
     Retrieve steps for a specific plan.
@@ -616,7 +616,7 @@ async def get_steps_by_plan(plan_id: str, request: Request) -> List[Step]:
     return steps
 
 
-@app.get("/agent_messages/{session_id}", response_model=List[AgentMessage])
+@app.get("/api/agent_messages/{session_id}", response_model=List[AgentMessage])
 async def get_agent_messages(session_id: str, request: Request) -> List[AgentMessage]:
     """
     Retrieve agent messages for a specific session.
@@ -680,7 +680,7 @@ async def get_agent_messages(session_id: str, request: Request) -> List[AgentMes
     return agent_messages
 
 
-@app.delete("/messages")
+@app.delete("/api/messages")
 async def delete_all_messages(request: Request) -> Dict[str, str]:
     """
     Delete all messages across sessions.
@@ -723,7 +723,7 @@ async def delete_all_messages(request: Request) -> Dict[str, str]:
     return {"status": "All messages deleted"}
 
 
-@app.get("/messages")
+@app.get("/api/messages")
 async def get_all_messages(request: Request):
     """
     Retrieve all messages across sessions.
@@ -803,39 +803,6 @@ async def get_agent_tools():
     """
     return []
 
-
-# Initialize the application when it starts
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the application on startup.
-    
-    This function runs when the FastAPI application starts up.
-    It sets up the agent types and tool loaders so the first request is faster.
-    """
-    # Log startup
-    logging.info("Application starting up. Initializing agent factory...")
-    
-    try:
-        # Create a temporary session and user ID to pre-initialize agents
-        # This ensures tools are loaded into the factory on startup
-        temp_session_id = "startup-session"
-        temp_user_id = "startup-user"
-        
-        # Create a test agent to initialize the tool loading system
-        # This will pre-load tool configurations into memory
-        test_agent = await AgentFactory.create_agent(
-            agent_type=AgentType.GENERIC,
-            session_id=temp_session_id,
-            user_id=temp_user_id
-        )
-        
-        # Clean up initialization resources
-        AgentFactory.clear_cache(temp_session_id)
-        logging.info("Agent factory successfully initialized")
-        
-    except Exception as e:
-        # Don't fail startup, but log the error
-        logging.error(f"Error initializing agent factory: {e}")
 
 
 # Run the app
