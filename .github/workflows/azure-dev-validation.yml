@@ -1,5 +1,10 @@
 name: Azure Template Validation
 on:
+  push:
+    branches:
+      - dev
+      - main
+      - feature/azd-semantickernel
   workflow_dispatch: 
 
 permissions:
