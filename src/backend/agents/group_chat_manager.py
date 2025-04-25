@@ -21,7 +21,7 @@ from src.backend.models.messages import (
     Step,
     StepStatus,
 )
-
+from models.messages_kernel import AgentType
 from src.backend.event_utils import track_event_if_configured
 
 
@@ -57,7 +57,7 @@ class GroupChatManager(RoutedAgent):
                 user_id=self._user_id,
                 plan_id="",
                 content=f"{message.description}",
-                source="HumanAgent",
+                source=AgentType.HUMAN.value,
                 step_id="",
             )
         )
@@ -68,7 +68,7 @@ class GroupChatManager(RoutedAgent):
                 "session_id": message.session_id,
                 "user_id": self._user_id,
                 "content": message.description,
-                "source": "HumanAgent",
+                "source": AgentType.HUMAN.value,
             },
         )
 

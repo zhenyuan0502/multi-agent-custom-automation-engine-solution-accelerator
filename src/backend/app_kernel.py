@@ -413,7 +413,7 @@ async def approve_step_endpoint(
     agents = await get_agents(human_feedback.session_id, user_id)
     
     # Send the approval to the group chat manager
-    group_chat_manager = agents["GroupChatManager"]
+    group_chat_manager = agents[AgentType.GROUP_CHAT_MANAGER.value]
     
     # Handle the approval
     human_feedback_json = human_feedback.json()
