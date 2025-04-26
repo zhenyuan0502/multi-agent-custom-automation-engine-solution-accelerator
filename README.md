@@ -12,7 +12,7 @@ This accelerator uses the AutoGen framework from Microsoft Research.  This is an
 
 <div align="center">
   
-[**SOLUTION OVERVIEW**](#solution-overview) \| [**QUICK DEPLOY**](#quick-deploy) \| [**BUSINESS USE CASE**](#business-use-case) \| [**SUPPORTING DOCUMENTATION**](#supporting-documentation)
+[**SOLUTION OVERVIEW**](#solution-overview) \| [**QUICK DEPLOY**](#quick-deploy) \| [**BUSINESS SCENARIO**](#business-scenario) \| [**SUPPORTING DOCUMENTATION**](#supporting-documentation)
 
 </div>
 <br/>
@@ -74,7 +74,7 @@ Quick deploy
 ### How to install or deploy
 Follow the quick deploy steps on the deployment guide to deploy this solution to your own Azure subscription.
 
-[Click here to launch the deployment guide](./documentation/DeploymentGuide.md)
+[Click here to launch the deployment guide](./documentation/LocalDeployment.md)
 <br/><br/>
 
 | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/microsoft/Multi-Agent-Custom-Automation-Engine-Solution-Accelerator) | [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/microsoft/Multi-Agent-Custom-Automation-Engine-Solution-Accelerator) |
