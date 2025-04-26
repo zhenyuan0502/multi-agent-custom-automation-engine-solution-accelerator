@@ -553,7 +553,7 @@ class GroupChatManager:
                 messages = []
                 if isinstance(result, str):
                     # If it's just a string response
-                    logging.debug(f"Group chat returned a string: {result[:100]}...")
+                    logging.info(f"Group chat returned a string: {result[:100]}...")
                     await self._memory_store.add_item(
                         AgentMessage(
                             session_id=self._session_id,

@@ -217,10 +217,14 @@ class AppConfig:
                 else:
                     # Assume these are already proper tool definitions for create_agent
                     tool_definitions = tools
-            
+            logging.info("\n\n\n\n\n")
+            logging.info("Tool definitions: %s", tool_definitions)
+            logging.info("\n\n\n\n\n")
             # Create the agent using the project client
             if response_format is not None:
+                logging.info("\n\n\n\n\n")
                 logging.info("Response format provided: %s", response_format)
+                logging.info("\n\n\n\n\n")
 
                 
             agent_definition = await project_client.agents.create_agent(

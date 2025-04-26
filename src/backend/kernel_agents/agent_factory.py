@@ -228,13 +228,13 @@ class AgentFactory:
                 if k in valid_keys
             }
             agent = agent_class(**filtered_kwargs)
-            logger.debug(f"[DEBUG] Agent object after instantiation: {agent}")
+            logger.info(f"[DEBUG] Agent object after instantiation: {agent}")
             # Initialize the agent asynchronously if it has async_init
             if hasattr(agent, "async_init") and inspect.iscoroutinefunction(
                 agent.async_init
             ):
                 init_result = await agent.async_init()
-                logger.debug(f"[DEBUG] Result of agent.async_init(): {init_result}")
+                logger.info(f"[DEBUG] Result of agent.async_init(): {init_result}")
             # Register tools with Azure AI Agent for LLM function calls
             if (
                 hasattr(agent, "_agent")
@@ -363,16 +363,15 @@ class AgentFactory:
         # Create agent name to instance mapping for the planner
         agent_instances = {}
         for agent_type, agent in agents.items():
-            agent_name = (
-                cls._agent_type_strings.get(agent_type).replace("_", "") + "Agent"
-            )
-            agent_name = (
-                agent_name[0].upper() + agent_name[1:]
-            )  # Capitalize first letter
+            agent_name = agent_type.value
+            
+            logging.info(
+                f"Creating agent instance for {agent_name} with type {agent_type}"
+            )   
             agent_instances[agent_name] = agent
 
         # Log the agent instances for debugging
-        logger.debug(
+        logger.info(
             f"Created {len(agent_instances)} agent instances for planner: {', '.join(agent_instances.keys())}"
         )
 

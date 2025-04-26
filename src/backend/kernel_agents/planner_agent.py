@@ -93,7 +93,7 @@ class PlannerAgent(BaseAgent):
             AgentType.HUMAN.value,
             AgentType.HR.value,
             AgentType.MARKETING.value,
-            AgentType.PRODUCT,
+            AgentType.PRODUCT.value,
             AgentType.PROCUREMENT.value,
             AgentType.TECH_SUPPORT.value,
             AgentType.GENERIC.value,
@@ -104,48 +104,6 @@ class PlannerAgent(BaseAgent):
         # Create the Azure AI Agent for planning operations
         # This will be initialized in async_init
         self._azure_ai_agent = None
-
-    def _get_response_format_schema(self) -> dict:
-        """
-        Returns a JSON schema that defines the expected structure of the response.
-        This ensures responses from the agent will match the required format exactly.
-        """
-        return {
-            "type": "object",
-            "properties": {
-                "initial_goal": {
-                    "type": "string",
-                    "description": "The primary goal extracted from the user's input task",
-                },
-                "steps": {
-                    "type": "array",
-                    "description": "List of steps required to complete the task",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "action": {
-                                "type": "string",
-                                "description": "A clear instruction for the agent including the function name to use",
-                            },
-                            "agent": {
-                                "type": "string",
-                                "description": "The name of the agent responsible for this step",
-                            },
-                        },
-                        "required": ["action", "agent"],
-                    },
-                },
-                "summary_plan_and_steps": {
-                    "type": "string",
-                    "description": "A concise summary of the overall plan and its steps in less than 50 words",
-                },
-                "human_clarification_request": {
-                    "type": ["string", "null"],
-                    "description": "Optional request for additional information needed from the user",
-                },
-            },
-            "required": ["initial_goal", "steps", "summary_plan_and_steps"],
-        }
 
     async def async_init(self) -> None:
         """Asynchronously initialize the PlannerAgent.
@@ -331,12 +289,12 @@ class PlannerAgent(BaseAgent):
         try:
             # Generate the instruction for the LLM
             logging.info("Generating instruction for the LLM")
-            logging.debug(f"Input: {input_task}")
-            logging.debug(f"Available agents: {self._available_agents}")
+            logging.info(f"Input: {input_task}")
+            logging.info(f"Available agents: {self._available_agents}")
 
             # Get template variables as a dictionary
             args = self._generate_args(input_task.description)
-
+            logging.info(f"Generated args: {args}")
             logging.info(f"Creating plan for task: '{input_task.description}'")
             logging.info(f"Using available agents: {self._available_agents}")
 
@@ -355,10 +313,10 @@ class PlannerAgent(BaseAgent):
             kernel_args = KernelArguments(**args)
             # kernel_args["input"] = f"TASK: {input_task.description}\n\n{instruction}"
 
-            logging.debug(f"Kernel arguments: {kernel_args}")
+            logging.info(f"Kernel arguments: {kernel_args}")
 
             # Get the schema for our expected response format
-            response_format_schema = self._get_response_format_schema()
+    
 
             # Ensure we're using the right pattern for Azure AI agents with semantic kernel
             # Properly handle async generation
@@ -367,10 +325,6 @@ class PlannerAgent(BaseAgent):
                 settings={
                     "temperature": 0.0,  # Keep temperature low for consistent planning
                     "max_tokens": 10096,  # Ensure we have enough tokens for the full plan
-                    "response_format": {
-                        "type": "json_object",
-                        "schema": response_format_schema,
-                    },
                 },
             )
 
@@ -382,8 +336,9 @@ class PlannerAgent(BaseAgent):
                 if chunk is not None:
                     response_content += str(chunk)
 
+            logging.info(f"\n\n\n\n")
             logging.info(f"Response content length: {len(response_content)}")
-            logging.debug(f"Response content: {response_content[:500]}...")
+            logging.info(f"\n\n\n\n")
 
             # Check if response is empty or whitespace
             if not response_content or response_content.isspace():
@@ -398,6 +353,9 @@ class PlannerAgent(BaseAgent):
                 try:
                     parsed_result = PlannerResponsePlan.parse_raw(response_content)
                     logging.info("Successfully parsed response with direct parsing")
+                    logging.info(f"\n\n\n\n")
+                    logging.info(f"Parsed result: {parsed_result}")
+                    logging.info(f"\n\n\n\n")
                 except Exception as parse_error:
                     logging.warning(f"Failed direct parse: {parse_error}")
 
@@ -727,6 +685,7 @@ class PlannerAgent(BaseAgent):
         if hasattr(self, "_agent_instances") and self._agent_instances:
             # Process each agent to get their tools
             for agent_name, agent in self._agent_instances.items():
+
                 if hasattr(agent, "_tools") and agent._tools:
                     # Add each tool from this agent
                     for tool in agent._tools:
@@ -814,7 +773,7 @@ class PlannerAgent(BaseAgent):
 
                             tools_list.append(tool_entry)
 
-            logging.debug(f"Generated {len(tools_list)} tools from agent instances")
+            logging.info(f"Generated {len(tools_list)} tools from agent instances")
 
         # If we couldn't extract tools from agent instances, create a simplified format
         if not tools_list:
@@ -833,7 +792,7 @@ class PlannerAgent(BaseAgent):
                             # Extract agent name if format is "Agent: AgentName"
                             agent_name = agent_part.replace("Agent", "").strip()
                             if not agent_name:
-                                agent_name = "GenericAgent"
+                                agent_name = AgentType.GENERIC.value
 
                             tools_list.append(
                                 {

@@ -474,14 +474,14 @@ class BaseAgent(AzureAIAgent):
             
             # Normalize filename to avoid issues with spaces and capitalization
             # Convert "Hr Agent" to "hr" and "TechSupport Agent" to "tech_support"
-            logging.debug(f"Normalizing filename: {filename}")
+            logging.info(f"Normalizing filename: {filename}")
             normalized_filename = filename.replace(" ", "_").replace("-", "_").lower()
             # If it ends with "_agent", remove it
             if normalized_filename.endswith("_agent"):
                 normalized_filename = normalized_filename[:-6]
-            logging
+            
             config_path = os.path.join(backend_dir, "tools", f"{normalized_filename}_tools.json")
-            logging.debug(f"Looking for tools config at: {config_path}")
+            logging.info(f"Looking for tools config at: {config_path}")
         
         try:
             with open(config_path, "r") as f:
@@ -540,12 +540,12 @@ class BaseAgent(AzureAIAgent):
                     
                     # Set this parameter in the function's metadata
                     if param_name:
-                        logging.debug(f"Adding parameter '{param_name}' to function '{function_name}'")
+                        logging.info(f"Adding parameter '{param_name}' to function '{function_name}'")
                 
                 # Register the function with the kernel
                 kernel.add_function(plugin_name, kernel_func)
                 kernel_functions.append(kernel_func)
-                logging.debug(f"Successfully created dynamic tool '{function_name}' for {agent_type}")
+                logging.info(f"Successfully created dynamic tool '{function_name}' for {agent_type}")
             except Exception as e:
                 logging.error(f"Failed to create tool '{tool.get('name', 'unknown')}': {str(e)}")
                 
