@@ -2,7 +2,7 @@
 
 ## **Pre-requisites**
 
-To deploy this solution accelerator, ensure you have access to an [Azure subscription](https://azure.microsoft.com/free/) with the necessary permissions to create **resource groups, resources, app registrations, and assign roles at the resource group level**. This should include Contributor role at the subscription level and Role Based Access Control role on the subscription and/or resource group level. Follow the steps in [Azure Account Set Up](./docs/AzureAccountSetUp.md).
+To deploy this solution accelerator, ensure you have access to an [Azure subscription](https://azure.microsoft.com/free/) with the necessary permissions to create **resource groups, resources, app registrations, and assign roles at the resource group level**. This should include Contributor role at the subscription level and Role Based Access Control role on the subscription and/or resource group level. Follow the steps in [Azure Account Set Up](../documentation/AzureAccountSetUp.md).
 
 Check the [Azure Products by Region](https://azure.microsoft.com/en-us/explore/global-infrastructure/products-by-region/?products=all&regions=all) page and select a **region** where the following services are available:
 
@@ -185,7 +185,7 @@ This guide provides step-by-step instructions for deploying your application usi
 
 There are several ways to deploy the solution. You can deploy to run in Azure in one click, or manually, or you can deploy locally.
 
-When Deployment is complete, follow steps in [Set Up Authentication in Azure App Service](./documentation/azure_app_service_auth_setup.md) to add app authentication to your web app running on Azure App Service
+When Deployment is complete, follow steps in [Set Up Authentication in Azure App Service](../documentation/azure_app_service_auth_setup.md) to add app authentication to your web app running on Azure App Service
 
 ## Local Deployment
 To run the solution site and API backend only locally for development and debugging purposes, See the [local setup](#local-setup).
@@ -301,7 +301,7 @@ az webapp config container set --resource-group <resource_group_name> \
 
 
 ### Add the Entra identity provider to the Azure Web App
-To add the identity provider, please follow the steps outlined in [Set Up Authentication in Azure App Service](./documentation/azure_app_service_auth_setup.md)
+To add the identity provider, please follow the steps outlined in [Set Up Authentication in Azure App Service](../documentation/azure_app_service_auth_setup.md)
 
 ### Run locally and debug
 
@@ -325,7 +325,7 @@ If you are using VSCode, you can use the debug configuration shown in the [local
 
 # Local setup
 
-> **Note for macOS Developers**: If you are using macOS on Apple Silicon (ARM64) the DevContainer will **not** work. This is due to a limitation with the Azure Functions Core Tools (see [here](https://github.com/Azure/azure-functions-core-tools/issues/3112)). We recommend using the [Non DevContainer Setup](./NON_DEVCONTAINER_SETUP.md) instructions to run the accelerator locally.
+> **Note for macOS Developers**: If you are using macOS on Apple Silicon (ARM64) the DevContainer will **not** work. This is due to a limitation with the Azure Functions Core Tools (see [here](https://github.com/Azure/azure-functions-core-tools/issues/3112)).
 
 The easiest way to run this accelerator is in a VS Code Dev Containers, which will open the project in your local VS Code using the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers):
 
