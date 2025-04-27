@@ -329,18 +329,19 @@ async def human_clarification_endpoint(
         )
         raise HTTPException(status_code=400, detail="no user")
 
-    # Get the agents for this session
-    agents = await get_agents(human_clarification.session_id, user_id)
+    kernel, memory_store = await initialize_runtime_and_context(
+        human_clarification.session_id, user_id
+    )
+    agents = await AgentFactory.create_all_agents(
+        session_id=human_clarification.session_id, user_id=user_id
+    )
 
-    # Send the clarification to the planner agent
-    planner_agent = agents[AgentType.PLANNER.value]
+    # Send the feedback to the human agent
+    human_agent = agents[AgentType.HUMAN.value]
 
-    # Convert clarification to JSON for proper processing
-    human_clarification_json = human_clarification.json()
-
-    # Use the planner to handle the clarification
-    await planner_agent.handle_human_clarification(
-        KernelArguments(human_clarification_json=human_clarification_json)
+    # Use the human agent to handle the feedback
+    await human_agent.handle_human_clarification(
+        human_clarification=human_clarification
     )
 
     track_event_if_configured(
@@ -523,7 +524,9 @@ async def get_plans(
         raise HTTPException(status_code=400, detail="no user")
 
     # Initialize memory context
-    memory_store = CosmosMemoryContext(session_id or "", user_id)
+    kernel, memory_store = await initialize_runtime_and_context(
+        session_id or "", user_id
+    )
 
     if session_id:
         plan = await memory_store.get_plan_by_session(session_id=session_id)
@@ -615,7 +618,7 @@ async def get_steps_by_plan(plan_id: str, request: Request) -> List[Step]:
         raise HTTPException(status_code=400, detail="no user")
 
     # Initialize memory context
-    memory_store = CosmosMemoryContext("", user_id)
+    kernel, memory_store = await initialize_runtime_and_context("", user_id)
     steps = await memory_store.get_steps_for_plan(plan_id=plan_id)
     return steps
 
@@ -681,7 +684,9 @@ async def get_agent_messages(session_id: str, request: Request) -> List[AgentMes
         raise HTTPException(status_code=400, detail="no user")
 
     # Initialize memory context
-    memory_store = CosmosMemoryContext(session_id, user_id)
+    kernel, memory_store = await initialize_runtime_and_context(
+        session_id or "", user_id
+    )
     agent_messages = await memory_store.get_data_by_type("agent_message")
     return agent_messages
 
@@ -712,7 +717,7 @@ async def delete_all_messages(request: Request) -> Dict[str, str]:
         raise HTTPException(status_code=400, detail="no user")
 
     # Initialize memory context
-    memory_store = CosmosMemoryContext(session_id="", user_id=user_id)
+    kernel, memory_store = await initialize_runtime_and_context("", user_id)
 
     logging.info("Deleting all plans")
     await memory_store.delete_all_items("plan")
@@ -773,7 +778,7 @@ async def get_all_messages(request: Request):
         raise HTTPException(status_code=400, detail="no user")
 
     # Initialize memory context
-    memory_store = CosmosMemoryContext(session_id="", user_id=user_id)
+    kernel, memory_store = await initialize_runtime_and_context("", user_id)
     message_list = await memory_store.get_all_items()
     return message_list
 

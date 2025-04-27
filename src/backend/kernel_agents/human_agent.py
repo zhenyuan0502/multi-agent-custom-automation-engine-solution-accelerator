@@ -10,6 +10,7 @@ from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
     AgentType,
     ApprovalRequest,
+    HumanClarification,
     HumanFeedback,
     Step,
     StepStatus,
@@ -148,7 +149,9 @@ class HumanAgent(BaseAgent):
 
         return "Human feedback processed successfully"
 
-    async def provide_clarification(self, kernel_arguments: KernelArguments) -> str:
+    async def provide_clarification(
+        self, human_clarification: HumanClarification
+    ) -> str:
         """Provide clarification on a plan.
 
         Args:
@@ -157,8 +160,8 @@ class HumanAgent(BaseAgent):
         Returns:
             Status message
         """
-        session_id = kernel_arguments["session_id"]
-        clarification_text = kernel_arguments["clarification_text"]
+        session_id = human_clarification.session_id
+        clarification_text = human_clarification.clarification_text
 
         # Get the plan associated with this session
         plan = await self._memory_store.get_plan_by_session(session_id)
