@@ -67,7 +67,7 @@ class HumanAgent(BaseAgent):
             definition=definition
         )
         
-    async def handle_human_feedback(self, kernel_arguments: KernelArguments) -> str:
+    async def handle_human_feedback(self, human_feedback: HumanFeedback) -> str:
         """Handle human feedback on a step.
         
         Args:
@@ -76,10 +76,7 @@ class HumanAgent(BaseAgent):
         Returns:
             Status message
         """
-        # Parse the human feedback
-        human_feedback_json = kernel_arguments["human_feedback_json"]
-        human_feedback = HumanFeedback.parse_raw(human_feedback_json)
-        
+
         # Get the step
         step = await self._memory_store.get_step(human_feedback.step_id, human_feedback.session_id)
         if not step:

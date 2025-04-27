@@ -238,18 +238,19 @@ async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Reques
         track_event_if_configured("UserIdNotFound", {"status_code": 400, "detail": "no user"})
         raise HTTPException(status_code=400, detail="no user")
         
-    # Get the agents for this session
-    agents = await get_agents(human_feedback.session_id, user_id)
+    kernel, memory_store = await initialize_runtime_and_context(human_feedback.session_id, user_id)
+    agents = await AgentFactory.create_all_agents(
+      session_id=human_feedback.session_id,
+      user_id=user_id
+    )
     
     # Send the feedback to the human agent
     human_agent = agents[AgentType.HUMAN.value]
     
-    # Convert feedback to JSON for the kernel function
-    human_feedback_json = human_feedback.json()
     
     # Use the human agent to handle the feedback
     await human_agent.handle_human_feedback(
-        KernelArguments(human_feedback_json=human_feedback_json)
+        human_feedback=human_feedback
     )
 
     track_event_if_configured(
@@ -413,7 +414,7 @@ async def approve_step_endpoint(
     agents = await get_agents(human_feedback.session_id, user_id)
     
     # Send the approval to the group chat manager
-    group_chat_manager = agents["GroupChatManager"]
+    group_chat_manager = agents[AgentType.GROUP_CHAT_MANAGER.value]
     
     # Handle the approval
     human_feedback_json = human_feedback.json()
@@ -421,7 +422,7 @@ async def approve_step_endpoint(
     # First process with HumanAgent to update step status
     human_agent = agents[AgentType.HUMAN.value]
     await human_agent.handle_human_feedback(
-        KernelArguments(human_feedback_json=human_feedback_json)
+        human_feedback_json=human_feedback_json
     )
     
     # Then execute the next step with GroupChatManager
