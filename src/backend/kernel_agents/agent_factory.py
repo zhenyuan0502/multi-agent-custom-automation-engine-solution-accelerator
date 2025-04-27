@@ -174,24 +174,23 @@ class AgentFactory:
             client = config.get_ai_project_client()
         except Exception as client_exc:
             logger.error(f"Error creating AIProjectClient: {client_exc}")
-            if agent_type == AgentType.GROUP_CHAT_MANAGER:
-                logger.info(
-                    f"Continuing with GroupChatManager creation despite AIProjectClient error"
-                )
-            else:
-                raise
+            raise
 
         try:
             # Create the agent definition using the AIProjectClient (project-based pattern)
             # For GroupChatManager, create a definition with minimal configuration
             if client is not None:
-                definition = await client.agents.create_agent(
-                    model=config.AZURE_OPENAI_DEPLOYMENT_NAME,
-                    name=agent_type_str,
-                    instructions=system_message,
-                    temperature=temperature,
-                    response_format=response_format,  # Add response_format if required
-                )
+                try:
+                    definition = await client.agents.get_agent(agent_type_str)
+
+                except Exception as get_agent_exc:
+                    definition = await client.agents.create_agent(
+                        model=config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                        name=agent_type_str,
+                        instructions=system_message,
+                        temperature=temperature,
+                        response_format=response_format,  # Add response_format if required
+                    )
                 logger.info(
                     f"Successfully created agent definition for {agent_type_str}"
                 )
@@ -199,12 +198,8 @@ class AgentFactory:
             logger.error(
                 f"Error creating agent definition with AIProjectClient for {agent_type_str}: {agent_exc}"
             )
-            if agent_type == AgentType.GROUP_CHAT_MANAGER:
-                logger.info(
-                    f"Continuing with GroupChatManager creation despite definition error"
-                )
-            else:
-                raise
+
+            raise
 
         # Create the agent instance using the project-based pattern
         try:
@@ -331,11 +326,6 @@ class AgentFactory:
         Returns:
             Dictionary mapping agent types to agent instances
         """
-        # Check if we already have all agents in the cache
-        if session_id in cls._agent_cache and len(cls._agent_cache[session_id]) == len(
-            cls._agent_classes
-        ):
-            return cls._agent_cache[session_id]
 
         # Create each agent type in two phases
         # First, create all agents except PlannerAgent and GroupChatManager
@@ -364,10 +354,10 @@ class AgentFactory:
         agent_instances = {}
         for agent_type, agent in agents.items():
             agent_name = agent_type.value
-            
+
             logging.info(
                 f"Creating agent instance for {agent_name} with type {agent_type}"
-            )   
+            )
             agent_instances[agent_name] = agent
 
         # Log the agent instances for debugging
@@ -390,6 +380,9 @@ class AgentFactory:
                 )
             ),
         )
+        agent_instances[AgentType.PLANNER.value] = (
+            planner_agent  # to pass it to group chat manager
+        )
         agents[planner_agent_type] = planner_agent
 
         # Phase 3: Create group chat manager with all agents including the planner
@@ -398,7 +391,7 @@ class AgentFactory:
             session_id=session_id,
             user_id=user_id,
             temperature=temperature,
-            available_agents=agent_instances,  # Pass all agents to group chat manager
+            agent_instances=agent_instances,  # Pass agent instances to the planner
         )
         agents[group_chat_manager_type] = group_chat_manager
 
