@@ -80,11 +80,16 @@ class HumanAgent(BaseAgent):
     async def handle_human_feedback(self, human_feedback: HumanFeedback) -> str:
         """Handle human feedback on a step.
 
+        This method processes feedback provided by a human user on a specific step in a plan.
+        It updates the step with the feedback, marks the step as completed, and notifies the
+        GroupChatManager by creating an ApprovalRequest in the memory store.
+
         Args:
-            kernel_arguments: Contains the human_feedback_json string
+            human_feedback: The HumanFeedback object containing feedback details
+                           including step_id, session_id, and human_feedback text
 
         Returns:
-            Status message
+            Status message indicating success or failure of processing the feedback
         """
 
         # Get the step
@@ -154,11 +159,16 @@ class HumanAgent(BaseAgent):
     ) -> str:
         """Provide clarification on a plan.
 
+        This method stores human clarification information for a plan associated with a session.
+        It retrieves the plan from memory, updates it with the clarification text, and records
+        the event in telemetry.
+
         Args:
-            kernel_arguments: Contains session_id and clarification_text
+            human_clarification: The HumanClarification object containing the session_id
+                                and clarification_text provided by the human user
 
         Returns:
-            Status message
+            Status message indicating success or failure of adding the clarification
         """
         session_id = human_clarification.session_id
         clarification_text = human_clarification.clarification_text
