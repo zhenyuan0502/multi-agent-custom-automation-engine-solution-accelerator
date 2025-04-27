@@ -7,11 +7,12 @@ from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
 
+
 class TechSupportAgent(BaseAgent):
     """Tech Support agent implementation using Semantic Kernel.
-    
+
     This agent specializes in IT troubleshooting, system administration, network issues,
-    software installation, and general technical support. It can help with setting up software, 
+    software installation, and general technical support. It can help with setting up software,
     accounts, devices, and other IT-related tasks.
     """
 
@@ -29,7 +30,7 @@ class TechSupportAgent(BaseAgent):
         definition=None,
     ) -> None:
         """Initialize the Tech Support Agent.
-        
+
         Args:
             kernel: The semantic kernel instance
             session_id: The current session identifier
@@ -47,17 +48,17 @@ class TechSupportAgent(BaseAgent):
             # Load the tech support tools configuration
             config = self.load_tools_config("tech_support", config_path)
             tools = self.get_tools_from_config(kernel, "tech_support", config_path)
-            
+
             # Use system message from config if not explicitly provided
             if not system_message:
                 system_message = config.get(
-                    "system_message", 
-                    "You are an AI Agent who is knowledgeable about Information Technology. You are able to help with setting up software, accounts, devices, and other IT-related tasks. If you need additional information from the human user asking the question in order to complete a request, ask before calling a function."
+                    "system_message",
+                    "You are an AI Agent who is knowledgeable about Information Technology. You are able to help with setting up software, accounts, devices, and other IT-related tasks. If you need additional information from the human user asking the question in order to complete a request, ask before calling a function.",
                 )
-            
+
             # Use agent name from config if available
             agent_name = AgentType.TECH_SUPPORT.value
-        
+
         super().__init__(
             agent_name=agent_name,
             kernel=kernel,
@@ -67,5 +68,5 @@ class TechSupportAgent(BaseAgent):
             tools=tools,
             system_message=system_message,
             client=client,
-            definition=definition
+            definition=definition,
         )

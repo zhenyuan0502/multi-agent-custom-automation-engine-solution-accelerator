@@ -3,6 +3,7 @@ import os
 import logging
 import semantic_kernel as sk
 from semantic_kernel.kernel import Kernel
+
 # Updated imports for compatibility
 try:
     # Try newer structure
@@ -14,6 +15,7 @@ from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 
 # Import AppConfig from app_config
 from app_config import config
+
 
 # This file is left as a lightweight wrapper around AppConfig for backward compatibility
 # All configuration is now handled by AppConfig in app_config.py
@@ -39,7 +41,9 @@ class Config:
     AZURE_AI_SUBSCRIPTION_ID = config.AZURE_AI_SUBSCRIPTION_ID
     AZURE_AI_RESOURCE_GROUP = config.AZURE_AI_RESOURCE_GROUP
     AZURE_AI_PROJECT_NAME = config.AZURE_AI_PROJECT_NAME
-    AZURE_AI_AGENT_PROJECT_CONNECTION_STRING = config.AZURE_AI_AGENT_PROJECT_CONNECTION_STRING
+    AZURE_AI_AGENT_PROJECT_CONNECTION_STRING = (
+        config.AZURE_AI_AGENT_PROJECT_CONNECTION_STRING
+    )
 
     @staticmethod
     def GetAzureCredentials():
@@ -55,7 +59,7 @@ class Config:
     def CreateKernel():
         """Creates a new Semantic Kernel instance using the AppConfig implementation."""
         return config.create_kernel()
-    
+
     @staticmethod
     def GetAIProjectClient():
         """Get an AIProjectClient using the AppConfig implementation."""

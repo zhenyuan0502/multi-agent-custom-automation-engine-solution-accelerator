@@ -7,9 +7,10 @@ from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
 
+
 class HrAgent(BaseAgent):
     """HR agent implementation using Semantic Kernel.
-    
+
     This agent provides HR-related functions such as onboarding, benefits management,
     and employee administration. All tools are loaded from hr_tools.json.
     """
@@ -28,7 +29,7 @@ class HrAgent(BaseAgent):
         definition=None,
     ) -> None:
         """Initialize the HR Agent.
-        
+
         Args:
             kernel: The semantic kernel instance
             session_id: The current session identifier
@@ -46,17 +47,17 @@ class HrAgent(BaseAgent):
             # Load the HR tools configuration
             config = self.load_tools_config("hr", config_path)
             tools = self.get_tools_from_config(kernel, "hr", config_path)
-            
+
             # Use system message from config if not explicitly provided
             if not system_message:
                 system_message = config.get(
-                    "system_message", 
-                    "You are an AI Agent. You have knowledge about HR (e.g., human resources), policies, procedures, and onboarding guidelines."
+                    "system_message",
+                    "You are an AI Agent. You have knowledge about HR (e.g., human resources), policies, procedures, and onboarding guidelines.",
                 )
-            
+
             # Use agent name from config if available
             agent_name = AgentType.HR.value
-        
+
         super().__init__(
             agent_name=agent_name,
             kernel=kernel,
@@ -66,5 +67,5 @@ class HrAgent(BaseAgent):
             tools=tools,
             system_message=system_message,
             client=client,
-            definition=definition
+            definition=definition,
         )

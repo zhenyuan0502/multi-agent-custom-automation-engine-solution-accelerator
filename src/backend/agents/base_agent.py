@@ -21,7 +21,7 @@ from src.backend.models.messages import (
     Step,
     StepStatus,
 )
-from models.messages_kernel import AgentType
+
 from src.backend.event_utils import track_event_if_configured
 
 
@@ -77,7 +77,7 @@ class BaseAgent(RoutedAgent):
                 AssistantMessage(content=message.action, source="GroupChatManager"),
                 UserMessage(
                     content=f"{step.human_feedback}. Now make the function call",
-                    source=AgentType.HUMAN.value,
+                    source="HumanAgent",
                 ),
             ]
         )

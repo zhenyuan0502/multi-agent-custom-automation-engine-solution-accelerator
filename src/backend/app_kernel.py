@@ -16,6 +16,7 @@ from azure.monitor.opentelemetry import configure_azure_monitor
 
 # Semantic Kernel imports
 import semantic_kernel as sk
+
 # Updated import for KernelArguments
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 
@@ -108,42 +109,47 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
     user_id = authenticated_user["user_principal_id"]
 
     if not user_id:
-        track_event_if_configured("UserIdNotFound", {"status_code": 400, "detail": "no user"})
+        track_event_if_configured(
+            "UserIdNotFound", {"status_code": 400, "detail": "no user"}
+        )
         raise HTTPException(status_code=400, detail="no user")
-        
+
     # Generate session ID if not provided
     if not input_task.session_id:
         input_task.session_id = str(uuid.uuid4())
-    
+
     try:
         # Create all agents instead of just the planner agent
         # This ensures other agents are created first and the planner has access to them
-        kernel, memory_store = await initialize_runtime_and_context(input_task.session_id, user_id)
-        agents = await AgentFactory.create_all_agents(
-            session_id=input_task.session_id,
-            user_id=user_id
+        kernel, memory_store = await initialize_runtime_and_context(
+            input_task.session_id, user_id
         )
-        
-        # Get the planner agent from the created agents
-        planner_agent = agents[AgentType.PLANNER]
-        
+        agents = await AgentFactory.create_all_agents(
+            session_id=input_task.session_id, user_id=user_id
+        )
+
+        group_chat_manager = agents[AgentType.GROUP_CHAT_MANAGER.value]
+
         # Convert input task to JSON for the kernel function, add user_id here
-        input_task_data = input_task.model_dump()
-        input_task_data["user_id"] = user_id
-        input_task_json = json.dumps(input_task_data)
-        
+
         logging.info(f"Input task: {input_task}")
         # Use the planner to handle the task
-        result = await planner_agent.handle_input_task(
-            input_task
-        )
-        
+        result = await group_chat_manager.handle_input_task(input_task)
+
         print(f"Result: {result}")
         # Get plan from memory store
         plan = await memory_store.get_plan_by_session(input_task.session_id)
 
-        print(f"Plan: {plan}")
-        
+        if not plan:  # If the plan is not found, raise an error
+            track_event_if_configured(
+                "PlanNotFound",
+                {
+                    "status": "Plan not found",
+                    "session_id": input_task.session_id,
+                    "description": input_task.description,
+                },
+            )
+            raise HTTPException(status_code=404, detail="Plan not found")
         # Log custom event for successful input task processing
         track_event_if_configured(
             "InputTaskProcessed",
@@ -161,23 +167,22 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
             "plan_id": plan.id,
             "description": input_task.description,
         }
-        
+
     except Exception as e:
         logging.exception(f"Error handling input task: {e}")
         track_event_if_configured(
-            "InputTaskError", 
+            "InputTaskError",
             {
                 "session_id": input_task.session_id,
                 "description": input_task.description,
                 "error": str(e),
-            }
+            },
         )
         raise HTTPException(status_code=400, detail="Error creating plan")
 
 
 @app.post("/api/human_feedback")
 async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Request):
-    
     """
     Receive human feedback on a step.
 
@@ -235,22 +240,23 @@ async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Reques
     authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
-        track_event_if_configured("UserIdNotFound", {"status_code": 400, "detail": "no user"})
+        track_event_if_configured(
+            "UserIdNotFound", {"status_code": 400, "detail": "no user"}
+        )
         raise HTTPException(status_code=400, detail="no user")
-        
-    # Get the agents for this session
-    agents = await get_agents(human_feedback.session_id, user_id)
-    
+
+    kernel, memory_store = await initialize_runtime_and_context(
+        human_feedback.session_id, user_id
+    )
+    agents = await AgentFactory.create_all_agents(
+        session_id=human_feedback.session_id, user_id=user_id
+    )
+
     # Send the feedback to the human agent
     human_agent = agents[AgentType.HUMAN.value]
-    
-    # Convert feedback to JSON for the kernel function
-    human_feedback_json = human_feedback.json()
-    
+
     # Use the human agent to handle the feedback
-    await human_agent.handle_human_feedback(
-        KernelArguments(human_feedback_json=human_feedback_json)
-    )
+    await human_agent.handle_human_feedback(human_feedback=human_feedback)
 
     track_event_if_configured(
         "Completed Feedback received",
@@ -318,21 +324,24 @@ async def human_clarification_endpoint(
     authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
-        track_event_if_configured("UserIdNotFound", {"status_code": 400, "detail": "no user"})
+        track_event_if_configured(
+            "UserIdNotFound", {"status_code": 400, "detail": "no user"}
+        )
         raise HTTPException(status_code=400, detail="no user")
-        
-    # Get the agents for this session
-    agents = await get_agents(human_clarification.session_id, user_id)
-    
-    # Send the clarification to the planner agent
-    planner_agent = agents[AgentType.PLANNER.value]
-    
-    # Convert clarification to JSON for proper processing
-    human_clarification_json = human_clarification.json()
-    
-    # Use the planner to handle the clarification
-    await planner_agent.handle_human_clarification(
-        KernelArguments(human_clarification_json=human_clarification_json)
+
+    kernel, memory_store = await initialize_runtime_and_context(
+        human_clarification.session_id, user_id
+    )
+    agents = await AgentFactory.create_all_agents(
+        session_id=human_clarification.session_id, user_id=user_id
+    )
+
+    # Send the feedback to the human agent
+    human_agent = agents[AgentType.HUMAN.value]
+
+    # Use the human agent to handle the feedback
+    await human_agent.handle_human_clarification(
+        human_clarification=human_clarification
     )
 
     track_event_if_configured(
@@ -406,31 +415,23 @@ async def approve_step_endpoint(
     authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
-        track_event_if_configured("UserIdNotFound", {"status_code": 400, "detail": "no user"})
+        track_event_if_configured(
+            "UserIdNotFound", {"status_code": 400, "detail": "no user"}
+        )
         raise HTTPException(status_code=400, detail="no user")
-        
+
     # Get the agents for this session
-    agents = await get_agents(human_feedback.session_id, user_id)
-    
+    kernel, memory_store = await initialize_runtime_and_context(
+        human_feedback.session_id, user_id
+    )
+    agents = await AgentFactory.create_all_agents(
+        session_id=human_feedback.session_id, user_id=user_id
+    )
+
     # Send the approval to the group chat manager
     group_chat_manager = agents[AgentType.GROUP_CHAT_MANAGER.value]
-    
-    # Handle the approval
-    human_feedback_json = human_feedback.json()
-    
-    # First process with HumanAgent to update step status
-    human_agent = agents[AgentType.HUMAN.value]
-    await human_agent.handle_human_feedback(
-        KernelArguments(human_feedback_json=human_feedback_json)
-    )
-    
-    # Then execute the next step with GroupChatManager
-    await group_chat_manager.execute_next_step(
-        KernelArguments(
-            session_id=human_feedback.session_id,
-            plan_id=human_feedback.plan_id
-        )
-    )
+
+    await group_chat_manager.handle_human_feedback(human_feedback)
 
     # Return a status message
     if human_feedback.step_id:
@@ -517,11 +518,15 @@ async def get_plans(
     authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
-        track_event_if_configured("UserIdNotFound", {"status_code": 400, "detail": "no user"})
+        track_event_if_configured(
+            "UserIdNotFound", {"status_code": 400, "detail": "no user"}
+        )
         raise HTTPException(status_code=400, detail="no user")
 
     # Initialize memory context
-    memory_store = CosmosMemoryContext(session_id or "", user_id)
+    kernel, memory_store = await initialize_runtime_and_context(
+        session_id or "", user_id
+    )
 
     if session_id:
         plan = await memory_store.get_plan_by_session(session_id=session_id)
@@ -607,11 +612,13 @@ async def get_steps_by_plan(plan_id: str, request: Request) -> List[Step]:
     authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
-        track_event_if_configured("UserIdNotFound", {"status_code": 400, "detail": "no user"})
+        track_event_if_configured(
+            "UserIdNotFound", {"status_code": 400, "detail": "no user"}
+        )
         raise HTTPException(status_code=400, detail="no user")
-    
+
     # Initialize memory context
-    memory_store = CosmosMemoryContext("", user_id)
+    kernel, memory_store = await initialize_runtime_and_context("", user_id)
     steps = await memory_store.get_steps_for_plan(plan_id=plan_id)
     return steps
 
@@ -671,11 +678,15 @@ async def get_agent_messages(session_id: str, request: Request) -> List[AgentMes
     authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
-        track_event_if_configured("UserIdNotFound", {"status_code": 400, "detail": "no user"})
+        track_event_if_configured(
+            "UserIdNotFound", {"status_code": 400, "detail": "no user"}
+        )
         raise HTTPException(status_code=400, detail="no user")
-    
+
     # Initialize memory context
-    memory_store = CosmosMemoryContext(session_id, user_id)
+    kernel, memory_store = await initialize_runtime_and_context(
+        session_id or "", user_id
+    )
     agent_messages = await memory_store.get_data_by_type("agent_message")
     return agent_messages
 
@@ -704,10 +715,10 @@ async def delete_all_messages(request: Request) -> Dict[str, str]:
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
         raise HTTPException(status_code=400, detail="no user")
-    
+
     # Initialize memory context
-    memory_store = CosmosMemoryContext(session_id="", user_id=user_id)
-    
+    kernel, memory_store = await initialize_runtime_and_context("", user_id)
+
     logging.info("Deleting all plans")
     await memory_store.delete_all_items("plan")
     logging.info("Deleting all sessions")
@@ -716,10 +727,10 @@ async def delete_all_messages(request: Request) -> Dict[str, str]:
     await memory_store.delete_all_items("step")
     logging.info("Deleting all agent_messages")
     await memory_store.delete_all_items("agent_message")
-    
+
     # Clear the agent factory cache
     AgentFactory.clear_cache()
-    
+
     return {"status": "All messages deleted"}
 
 
@@ -765,9 +776,9 @@ async def get_all_messages(request: Request):
     user_id = authenticated_user["user_principal_id"]
     if not user_id:
         raise HTTPException(status_code=400, detail="no user")
-    
+
     # Initialize memory context
-    memory_store = CosmosMemoryContext(session_id="", user_id=user_id)
+    kernel, memory_store = await initialize_runtime_and_context("", user_id)
     message_list = await memory_store.get_all_items()
     return message_list
 
@@ -802,7 +813,6 @@ async def get_agent_tools():
                 description: Arguments required by the tool function
     """
     return []
-
 
 
 # Run the app

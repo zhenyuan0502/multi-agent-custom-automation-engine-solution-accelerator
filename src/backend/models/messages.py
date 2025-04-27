@@ -2,7 +2,13 @@ import uuid
 from enum import Enum
 from typing import Literal, Optional
 
-from .messages_kernel import AgentType
+from autogen_core.components.models import (
+    AssistantMessage,
+    FunctionExecutionResultMessage,
+    LLMMessage,
+    SystemMessage,
+    UserMessage,
+)
 from pydantic import BaseModel, Field
 
 
@@ -17,15 +23,15 @@ class DataType(str, Enum):
 class BAgentType(str, Enum):
     """Enumeration of agent types."""
 
-    AgentType.HUMAN.value = "HumanAgent"
-    AgentType.HR.value = "HrAgent"
-    AgentType.MARKETING.value = "MarketingAgent"
-    AgentType.PROCUREMENT.value = "ProcurementAgent"
-    AgentType.PRODUCT.value = "ProductAgent"
-    AgentType.GENERIC.value = "GenericAgent"
-    AgentType.TECH_SUPPORT.value = "TechSupportAgent"
-    AgentType.GROUP_CHAT_MANAGER.value = "GroupChatManager"
-    AgentType.PLANNER.value = "PlannerAgent"
+    human_agent = "HumanAgent"
+    hr_agent = "HrAgent"
+    marketing_agent = "MarketingAgent"
+    procurement_agent = "ProcurementAgent"
+    product_agent = "ProductAgent"
+    generic_agent = "GenericAgent"
+    tech_support_agent = "TechSupportAgent"
+    group_chat_manager = "GroupChatManager"
+    planner_agent = "PlannerAgent"
 
     # Add other agents as needed
 

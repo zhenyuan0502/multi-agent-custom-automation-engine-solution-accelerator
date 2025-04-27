@@ -25,7 +25,7 @@ from src.backend.models.messages import (
     StepStatus,
     HumanFeedbackStatus,
 )
-from models.messages_kernel import AgentType
+
 from src.backend.event_utils import track_event_if_configured
 
 
@@ -133,7 +133,7 @@ class PlannerAgent(RoutedAgent):
                 user_id=self._user_id,
                 plan_id="",
                 content=f"{message.human_clarification}",
-                source=AgentType.HUMAN.value,
+                source="HumanAgent",
                 step_id="",
             )
         )
@@ -144,7 +144,7 @@ class PlannerAgent(RoutedAgent):
                 "session_id": message.session_id,
                 "user_id": self._user_id,
                 "content": f"{message.human_clarification}",
-                "source": AgentType.HUMAN.value,
+                "source": "HumanAgent",
             },
         )
 

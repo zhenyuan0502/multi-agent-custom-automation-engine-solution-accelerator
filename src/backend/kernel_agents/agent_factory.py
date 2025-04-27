@@ -121,19 +121,31 @@ class AgentFactory:
     ) -> BaseAgent:
         """Create an agent of the specified type.
 
+        This method creates and initializes an agent instance of the specified type. If an agent
+        of the same type already exists for the session, it returns the cached instance. The method
+        handles the complete initialization process including:
+        1. Creating a memory store for the agent
+        2. Setting up the Semantic Kernel
+        3. Loading appropriate tools from JSON configuration files
+        4. Creating an Azure AI agent definition using the AI Project client
+        5. Initializing the agent with all required parameters
+        6. Running any asynchronous initialization if needed
+        7. Caching the agent for future use
+
         Args:
-            agent_type: The type of agent to create
-            session_id: The session ID
-            user_id: The user ID
-            temperature: The temperature to use for the agent
-            system_message: Optional system message for the agent
+            agent_type: The type of agent to create (from AgentType enum)
+            session_id: The unique identifier for the current session
+            user_id: The user identifier for the current user
+            temperature: The temperature parameter for the agent's responses (0.0-1.0)
+            system_message: Optional custom system message to override default
+            response_format: Optional response format configuration for structured outputs
             **kwargs: Additional parameters to pass to the agent constructor
 
         Returns:
-            An instance of the specified agent type
+            An initialized instance of the specified agent type
 
         Raises:
-            ValueError: If the agent type is unknown
+            ValueError: If the agent type is unknown or initialization fails
         """
         # Check if we already have an agent in the cache
         if (
@@ -174,24 +186,23 @@ class AgentFactory:
             client = config.get_ai_project_client()
         except Exception as client_exc:
             logger.error(f"Error creating AIProjectClient: {client_exc}")
-            if agent_type == AgentType.GROUP_CHAT_MANAGER:
-                logger.info(
-                    f"Continuing with GroupChatManager creation despite AIProjectClient error"
-                )
-            else:
-                raise
+            raise
 
         try:
             # Create the agent definition using the AIProjectClient (project-based pattern)
             # For GroupChatManager, create a definition with minimal configuration
             if client is not None:
-                definition = await client.agents.create_agent(
-                    model=config.AZURE_OPENAI_DEPLOYMENT_NAME,
-                    name=agent_type_str,
-                    instructions=system_message,
-                    temperature=temperature,
-                    response_format=response_format,  # Add response_format if required
-                )
+                try:
+                    definition = await client.agents.get_agent(agent_type_str)
+
+                except Exception as get_agent_exc:
+                    definition = await client.agents.create_agent(
+                        model=config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                        name=agent_type_str,
+                        instructions=system_message,
+                        temperature=temperature,
+                        response_format=response_format,  # Add response_format if required
+                    )
                 logger.info(
                     f"Successfully created agent definition for {agent_type_str}"
                 )
@@ -199,12 +210,8 @@ class AgentFactory:
             logger.error(
                 f"Error creating agent definition with AIProjectClient for {agent_type_str}: {agent_exc}"
             )
-            if agent_type == AgentType.GROUP_CHAT_MANAGER:
-                logger.info(
-                    f"Continuing with GroupChatManager creation despite definition error"
-                )
-            else:
-                raise
+
+            raise
 
         # Create the agent instance using the project-based pattern
         try:
@@ -228,13 +235,13 @@ class AgentFactory:
                 if k in valid_keys
             }
             agent = agent_class(**filtered_kwargs)
-            logger.debug(f"[DEBUG] Agent object after instantiation: {agent}")
+            logger.info(f"[DEBUG] Agent object after instantiation: {agent}")
             # Initialize the agent asynchronously if it has async_init
             if hasattr(agent, "async_init") and inspect.iscoroutinefunction(
                 agent.async_init
             ):
                 init_result = await agent.async_init()
-                logger.debug(f"[DEBUG] Result of agent.async_init(): {init_result}")
+                logger.info(f"[DEBUG] Result of agent.async_init(): {init_result}")
             # Register tools with Azure AI Agent for LLM function calls
             if (
                 hasattr(agent, "_agent")
@@ -321,21 +328,24 @@ class AgentFactory:
     async def create_all_agents(
         cls, session_id: str, user_id: str, temperature: float = 0.0
     ) -> Dict[AgentType, BaseAgent]:
-        """Create all agent types for a session.
+        """Create all agent types for a session in a specific order.
+
+        This method creates all agent instances for a session in a multi-phase approach:
+        1. First, it creates all basic agent types except for the Planner and GroupChatManager
+        2. Then it creates the Planner agent, providing it with references to all other agents
+        3. Finally, it creates the GroupChatManager with references to all agents including the Planner
+
+        This ordered creation ensures that dependencies between agents are properly established,
+        particularly for the Planner and GroupChatManager which need to coordinate other agents.
 
         Args:
-            session_id: The session ID
-            user_id: The user ID
-            temperature: The temperature to use for the agents
+            session_id: The unique identifier for the current session
+            user_id: The user identifier for the current user
+            temperature: The temperature parameter for agent responses (0.0-1.0)
 
         Returns:
-            Dictionary mapping agent types to agent instances
+            Dictionary mapping agent types (from AgentType enum) to initialized agent instances
         """
-        # Check if we already have all agents in the cache
-        if session_id in cls._agent_cache and len(cls._agent_cache[session_id]) == len(
-            cls._agent_classes
-        ):
-            return cls._agent_cache[session_id]
 
         # Create each agent type in two phases
         # First, create all agents except PlannerAgent and GroupChatManager
@@ -363,16 +373,15 @@ class AgentFactory:
         # Create agent name to instance mapping for the planner
         agent_instances = {}
         for agent_type, agent in agents.items():
-            agent_name = (
-                cls._agent_type_strings.get(agent_type).replace("_", "") + "Agent"
+            agent_name = agent_type.value
+
+            logging.info(
+                f"Creating agent instance for {agent_name} with type {agent_type}"
             )
-            agent_name = (
-                agent_name[0].upper() + agent_name[1:]
-            )  # Capitalize first letter
             agent_instances[agent_name] = agent
 
         # Log the agent instances for debugging
-        logger.debug(
+        logger.info(
             f"Created {len(agent_instances)} agent instances for planner: {', '.join(agent_instances.keys())}"
         )
 
@@ -391,6 +400,9 @@ class AgentFactory:
                 )
             ),
         )
+        agent_instances[AgentType.PLANNER.value] = (
+            planner_agent  # to pass it to group chat manager
+        )
         agents[planner_agent_type] = planner_agent
 
         # Phase 3: Create group chat manager with all agents including the planner
@@ -399,7 +411,7 @@ class AgentFactory:
             session_id=session_id,
             user_id=user_id,
             temperature=temperature,
-            available_agents=agent_instances,  # Pass all agents to group chat manager
+            agent_instances=agent_instances,  # Pass agent instances to the planner
         )
         agents[group_chat_manager_type] = group_chat_manager
 
