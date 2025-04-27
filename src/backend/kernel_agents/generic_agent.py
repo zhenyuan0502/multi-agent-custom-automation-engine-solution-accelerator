@@ -8,6 +8,7 @@ from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
 
+
 class GenericAgent(BaseAgent):
     """Generic agent implementation using Semantic Kernel."""
 
@@ -25,7 +26,7 @@ class GenericAgent(BaseAgent):
         definition=None,
     ) -> None:
         """Initialize the Generic Agent.
-        
+
         Args:
             kernel: The semantic kernel instance
             session_id: The current session identifier
@@ -43,17 +44,19 @@ class GenericAgent(BaseAgent):
             # Load the generic tools configuration
             config = self.load_tools_config("generic", config_path)
             tools = self.get_tools_from_config(kernel, "generic", config_path)
-            
+
             # Use system message from config if not explicitly provided
             if not system_message:
-                system_message = config.get("system_message", 
+                system_message = config.get(
+                    "system_message",
                     "You are a generic agent. You are used to handle generic tasks that a general Large Language Model can assist with. "
                     "You are being called as a fallback, when no other agents are able to use their specialised functions in order to solve "
-                    "the user's task. Summarize back to the user what was done.")
-            
+                    "the user's task. Summarize back to the user what was done.",
+                )
+
             # Use agent name from config if available
             agent_name = AgentType.GENERIC.value
-        
+
         # Call the parent initializer
         super().__init__(
             agent_name=agent_name,
@@ -64,19 +67,19 @@ class GenericAgent(BaseAgent):
             tools=tools,
             system_message=system_message,
             client=client,
-            definition=definition
+            definition=definition,
         )
-    
+
     # Explicitly inherit handle_action_request from the parent class
     # This is not technically necessary but makes the inheritance explicit
     async def handle_action_request(self, action_request_json: str) -> str:
         """Handle an action request from another agent or the system.
-        
+
         This method is inherited from BaseAgent but explicitly included here for clarity.
-        
+
         Args:
             action_request_json: The action request as a JSON string
-            
+
         Returns:
             A JSON string containing the action response
         """

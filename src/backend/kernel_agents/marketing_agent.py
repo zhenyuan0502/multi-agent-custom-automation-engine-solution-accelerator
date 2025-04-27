@@ -7,9 +7,10 @@ from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
 
+
 class MarketingAgent(BaseAgent):
     """Marketing agent implementation using Semantic Kernel.
-    
+
     This agent specializes in marketing strategies, campaign development,
     content creation, and market analysis. It can create effective marketing
     campaigns, analyze market trends, develop promotional content, and more.
@@ -30,7 +31,7 @@ class MarketingAgent(BaseAgent):
         definition=None,
     ) -> None:
         """Initialize the Marketing Agent.
-        
+
         Args:
             kernel: The semantic kernel instance
             session_id: The current session identifier
@@ -48,17 +49,17 @@ class MarketingAgent(BaseAgent):
             # Load the marketing tools configuration
             config = self.load_tools_config("marketing", config_path)
             tools = self.get_tools_from_config(kernel, "marketing", config_path)
-            
+
             # Use system message from config if not explicitly provided
             if not system_message:
                 system_message = config.get(
-                    "system_message", 
-                    "You are an AI Agent. You have knowledge about marketing, including campaigns, market research, and promotional activities."
+                    "system_message",
+                    "You are an AI Agent. You have knowledge about marketing, including campaigns, market research, and promotional activities.",
                 )
-            
+
             # Use agent name from config if available
             agent_name = AgentType.MARKETING.value
-        
+
         super().__init__(
             agent_name=agent_name,
             kernel=kernel,
@@ -68,5 +69,5 @@ class MarketingAgent(BaseAgent):
             tools=tools,
             system_message=system_message,
             client=client,
-            definition=definition
+            definition=definition,
         )
