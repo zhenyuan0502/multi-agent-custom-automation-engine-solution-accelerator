@@ -277,7 +277,7 @@ class BaseAgent(AzureAIAgent):
             chat_history = self._chat_history.copy()
 
             # Call the agent to handle the action
-            agent_response = await self._agent.invoke(
+            agent_response = self._agent.invoke(
                 self._kernel, f"{action_request.action}\n\nPlease perform this action"
             )
             result = str(agent_response)
