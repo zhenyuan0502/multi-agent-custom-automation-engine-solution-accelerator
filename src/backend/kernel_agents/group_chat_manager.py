@@ -138,7 +138,7 @@ class GroupChatManager(BaseAgent):
         logging.info(f"Plan created: {result}")
         return result
 
-    async def handle_human_approval_feedback(self, message: HumanFeedback) -> None:
+    async def handle_human_feedback(self, message: HumanFeedback) -> None:
         """
         Handles the human approval feedback for a single step or all steps.
         Updates the step status and stores the feedback in the session context.
