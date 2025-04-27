@@ -277,10 +277,19 @@ class BaseAgent(AzureAIAgent):
             chat_history = self._chat_history.copy()
 
             # Call the agent to handle the action
-            agent_response = self._agent.invoke(
+            async_generator = self._agent.invoke(
                 self._kernel, f"{action_request.action}\n\nPlease perform this action"
             )
-            result = str(agent_response)
+
+            response_content = ""
+
+            # Collect the response from the async generator
+            async for chunk in async_generator:
+                if chunk is not None:
+                    response_content += str(chunk)
+
+            logging.info(f"Response content length: {len(response_content)}")
+            logging.info(f"Response content: {response_content}")
 
             # Store agent message in cosmos memory
             await self._memory_store.add_item(
@@ -288,7 +297,7 @@ class BaseAgent(AzureAIAgent):
                     session_id=action_request.session_id,
                     user_id=self._user_id,
                     plan_id=action_request.plan_id,
-                    content=f"{result}",
+                    content=f"{response_content}",
                     source=self._agent_name,
                     step_id=action_request.step_id,
                 )
@@ -301,7 +310,7 @@ class BaseAgent(AzureAIAgent):
                     "session_id": action_request.session_id,
                     "user_id": self._user_id,
                     "plan_id": action_request.plan_id,
-                    "content": f"{result}",
+                    "content": f"{response_content}",
                     "source": self._agent_name,
                     "step_id": action_request.step_id,
                 },
@@ -333,11 +342,11 @@ class BaseAgent(AzureAIAgent):
             )
             return response.json()
 
-        logging.info(f"Task completed: {result}")
+        logging.info(f"Task completed: {response_content}")
 
         # Update step status
         step.status = StepStatus.completed
-        step.agent_reply = result
+        step.agent_reply = response_content
         await self._memory_store.update_step(step)
 
         # Track step completion in telemetry
@@ -346,10 +355,10 @@ class BaseAgent(AzureAIAgent):
             {
                 "status": StepStatus.completed,
                 "session_id": action_request.session_id,
-                "agent_reply": f"{result}",
+                "agent_reply": f"{response_content}",
                 "user_id": self._user_id,
                 "plan_id": action_request.plan_id,
-                "content": f"{result}",
+                "content": f"{response_content}",
                 "source": self._agent_name,
                 "step_id": action_request.step_id,
             },
@@ -360,7 +369,7 @@ class BaseAgent(AzureAIAgent):
             step_id=step.id,
             plan_id=step.plan_id,
             session_id=action_request.session_id,
-            result=result,
+            result=response_content,
             status=StepStatus.completed,
         )
 

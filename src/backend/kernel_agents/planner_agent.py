@@ -126,12 +126,12 @@ class PlannerAgent(BaseAgent):
                 instructions=instructions,  # Pass the formatted string, not an object
                 temperature=0.0,
                 response_format=ResponseFormatJsonSchemaType(
-                json_schema=ResponseFormatJsonSchema(
-                    name=PlannerResponsePlan.__name__,
-                    description=f"respond with {PlannerResponsePlan.__name__.lower()}",
-                    schema=PlannerResponsePlan.model_json_schema(),
-                )
-            ),
+                    json_schema=ResponseFormatJsonSchema(
+                        name=PlannerResponsePlan.__name__,
+                        description=f"respond with {PlannerResponsePlan.__name__.lower()}",
+                        schema=PlannerResponsePlan.model_json_schema(),
+                    )
+                ),
             )
             logging.info("Successfully created Azure AI Agent for PlannerAgent")
             return True
@@ -316,7 +316,6 @@ class PlannerAgent(BaseAgent):
             logging.info(f"Kernel arguments: {kernel_args}")
 
             # Get the schema for our expected response format
-    
 
             # Ensure we're using the right pattern for Azure AI agents with semantic kernel
             # Properly handle async generation
@@ -336,9 +335,7 @@ class PlannerAgent(BaseAgent):
                 if chunk is not None:
                     response_content += str(chunk)
 
-            logging.info(f"\n\n\n\n")
             logging.info(f"Response content length: {len(response_content)}")
-            logging.info(f"\n\n\n\n")
 
             # Check if response is empty or whitespace
             if not response_content or response_content.isspace():
