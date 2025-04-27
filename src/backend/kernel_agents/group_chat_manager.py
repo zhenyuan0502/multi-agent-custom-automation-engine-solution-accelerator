@@ -5,7 +5,6 @@ import re
 from typing import Dict, List, Optional, Any, Tuple
 
 import semantic_kernel as sk
-from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.functions.kernel_function import KernelFunction
 from semantic_kernel.agents import AgentGroupChat  # pylint: disable=E0611
 
