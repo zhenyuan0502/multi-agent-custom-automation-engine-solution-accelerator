@@ -247,7 +247,7 @@ class GroupChatManager(BaseAgent):
                     step.human_approval_status = HumanFeedbackStatus.rejected
                     self._memory_store.update_step(step)
                     track_event_if_configured(
-                        "Group Chat Manager - Step has been rejected and updated into the cosmos",
+                        f"{AgentType.GROUP_CHAT_MANAGER.value} - Step has been rejected and updated into the cosmos",
                         {
                             "status": StepStatus.rejected,
                             "session_id": message.session_id,
@@ -272,7 +272,7 @@ class GroupChatManager(BaseAgent):
         step.status = StepStatus.completed
         await self._memory_store.update_step(step)
         track_event_if_configured(
-            "Group Chat Manager - Received human feedback, Updating step and updated into the cosmos",
+            f"{AgentType.GROUP_CHAT_MANAGER.value} - Received human feedback, Updating step and updated into the cosmos",
             {
                 "status": StepStatus.completed,
                 "session_id": step.session_id,
@@ -290,7 +290,7 @@ class GroupChatManager(BaseAgent):
         step.status = StepStatus.action_requested
         await self._memory_store.update_step(step)
         track_event_if_configured(
-            "Group Chat Manager - Update step to action_requested and updated into the cosmos",
+            f"{AgentType.GROUP_CHAT_MANAGER.value} - Update step to action_requested and updated into the cosmos",
             {
                 "status": StepStatus.action_requested,
                 "session_id": step.session_id,
@@ -317,7 +317,7 @@ class GroupChatManager(BaseAgent):
             if step.id == current_step_id:
                 break
             formatted_string += f"Step {i}\n"
-            formatted_string += f"Group chat manager: {step.action}\n"
+            formatted_string += f"{AgentType.GROUP_CHAT_MANAGER.value}: {step.action}\n"
             formatted_string += f"{step.agent.name}: {step.agent_reply}\n"
         formatted_string += "<conversation_history \\>"
 
@@ -353,13 +353,13 @@ class GroupChatManager(BaseAgent):
         )
 
         track_event_if_configured(
-            f"Group Chat Manager - Requesting {formatted_agent} to perform the action and added into the cosmos",
+            f"{AgentType.GROUP_CHAT_MANAGER.value} - Requesting {formatted_agent} to perform the action and added into the cosmos",
             {
                 "session_id": session_id,
                 "user_id": self._user_id,
                 "plan_id": step.plan_id,
                 "content": f"Requesting {formatted_agent} to perform action: {step.action}",
-                "source": "GroupChatManager",
+                "source": AgentType.GROUP_CHAT_MANAGER.value,
                 "step_id": step.id,
             },
         )
