@@ -27,7 +27,7 @@ param location string
   'westus3'
 ])
 @description('Location for all Ai services resources. This location can be different from the resource group location.')
-param azureOpenAILocation string = 'eastus2' // The location used for all deployed resources.  This location must be in the same region as the resource group.
+param azureOpenAILocation string = resourceGroup().location // The location used for all deployed resources.  This location must be in the same region as the resource group.
 
 @minLength(3)
 @maxLength(20)
