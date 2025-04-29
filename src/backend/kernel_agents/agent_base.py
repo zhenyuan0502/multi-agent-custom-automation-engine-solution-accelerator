@@ -189,8 +189,11 @@ class BaseAgent(AzureAIAgent):
             # chat_history = self._chat_history.copy()
 
             # Call the agent to handle the action
+            # thread = self.client.agents.create_thread(thread_id=step.session_id)
+            thread = None
             async_generator = self._agent.invoke(
-                messages=f"{action_request.action}\n\nPlease perform this action"
+                messages=f"{action_request.action}\n\nPlease perform this action",
+                thread=thread,
             )
 
             response_content = ""
@@ -304,6 +307,13 @@ class BaseAgent(AzureAIAgent):
         Returns:
             A dynamic async function that can be registered with the semantic kernel
         """
+
+        # Truncate function name to 64 characters if it exceeds the limit
+        if len(name) > 64:
+            logging.warning(
+                f"Function name '{name}' exceeds 64 characters (length: {len(name)}). Truncating to 64 characters."
+            )
+            name = name[:64]
 
         async def dynamic_function(**kwargs) -> str:
             try:

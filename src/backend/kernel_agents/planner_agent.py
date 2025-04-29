@@ -12,7 +12,11 @@ from azure.ai.projects.models import (
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.functions.kernel_arguments import KernelArguments
-
+from semantic_kernel.agents import (
+    AzureAIAgent,
+    AzureAIAgentSettings,
+    AzureAIAgentThread,
+)
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
@@ -319,12 +323,15 @@ class PlannerAgent(BaseAgent):
 
             # Ensure we're using the right pattern for Azure AI agents with semantic kernel
             # Properly handle async generation
+            thread = None
+            # thread = self.client.agents.create_thread(thread_id=input_task.session_id)
             async_generator = self._azure_ai_agent.invoke(
                 arguments=kernel_args,
                 settings={
                     "temperature": 0.0,  # Keep temperature low for consistent planning
                     "max_tokens": 10096,  # Ensure we have enough tokens for the full plan
                 },
+                thread=thread,
             )
 
             # Call invoke with proper keyword arguments and JSON response schema
