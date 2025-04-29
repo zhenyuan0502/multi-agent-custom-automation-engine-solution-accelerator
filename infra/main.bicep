@@ -1,6 +1,6 @@
 targetScope = 'resourceGroup'
 @description('Location for all resources.')
-param location string
+param location string = 'EastUS2' //Fixed for model availability, change back to resourceGroup().location
 
 @allowed([
   'australiaeast'
