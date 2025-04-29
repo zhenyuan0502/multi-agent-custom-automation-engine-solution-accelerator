@@ -5,10 +5,12 @@ from semantic_kernel.functions import KernelFunction
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from models.messages_kernel import AgentType
+
 
 class ProcurementAgent(BaseAgent):
     """Procurement agent implementation using Semantic Kernel.
-    
+
     This agent specializes in purchasing, vendor management, supply chain operations,
     and inventory control. It can create purchase orders, manage vendors, track orders,
     and ensure efficient procurement processes.
@@ -22,13 +24,13 @@ class ProcurementAgent(BaseAgent):
         memory_store: CosmosMemoryContext,
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
-        agent_name: str = "ProcurementAgent",
+        agent_name: str = AgentType.PROCUREMENT.value,
         config_path: Optional[str] = None,
         client=None,
         definition=None,
     ) -> None:
         """Initialize the Procurement Agent.
-        
+
         Args:
             kernel: The semantic kernel instance
             session_id: The current session identifier
@@ -46,17 +48,17 @@ class ProcurementAgent(BaseAgent):
             # Load the procurement tools configuration
             config = self.load_tools_config("procurement", config_path)
             tools = self.get_tools_from_config(kernel, "procurement", config_path)
-            
+
             # Use system message from config if not explicitly provided
             if not system_message:
                 system_message = config.get(
-                    "system_message", 
-                    "You are an AI Agent. You are able to assist with procurement enquiries and order items. If you need additional information from the human user asking the question in order to complete a request, ask before calling a function."
+                    "system_message",
+                    "You are an AI Agent. You are able to assist with procurement enquiries and order items. If you need additional information from the human user asking the question in order to complete a request, ask before calling a function.",
                 )
-            
+
             # Use agent name from config if available
-            agent_name = config.get("agent_name", agent_name)
-        
+            agent_name = AgentType.PROCUREMENT.value
+
         super().__init__(
             agent_name=agent_name,
             kernel=kernel,
@@ -66,5 +68,5 @@ class ProcurementAgent(BaseAgent):
             tools=tools,
             system_message=system_message,
             client=client,
-            definition=definition
+            definition=definition,
         )

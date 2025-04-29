@@ -7,12 +7,22 @@ from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
-from models.messages_kernel import HumanFeedback, Step, StepStatus, AgentMessage, ActionRequest
+from models.messages_kernel import (
+    AgentType,
+    ApprovalRequest,
+    HumanClarification,
+    HumanFeedback,
+    Step,
+    StepStatus,
+    AgentMessage,
+    ActionRequest,
+)
 from event_utils import track_event_if_configured
+
 
 class HumanAgent(BaseAgent):
     """Human agent implementation using Semantic Kernel.
-    
+
     This agent represents a human user in the system, receiving and processing
     feedback from humans and passing it to other agents for further action.
     """
@@ -25,13 +35,13 @@ class HumanAgent(BaseAgent):
         memory_store: CosmosMemoryContext,
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
-        agent_name: str = "HumanAgent",
+        agent_name: str = AgentType.HUMAN.value,
         config_path: Optional[str] = None,
         client=None,
         definition=None,
     ) -> None:
         """Initialize the Human Agent.
-        
+
         Args:
             kernel: The semantic kernel instance
             session_id: The current session identifier
@@ -50,11 +60,11 @@ class HumanAgent(BaseAgent):
             tools = self.get_tools_from_config(kernel, "human", config_path)
             if not system_message:
                 system_message = config.get(
-                    "system_message", 
-                    "You are representing a human user in the conversation. You handle interactions that require human feedback or input."
+                    "system_message",
+                    "You are representing a human user in the conversation. You handle interactions that require human feedback or input.",
                 )
-            agent_name = config.get("agent_name", agent_name)
-        
+            agent_name = AgentType.HUMAN.value
+
         super().__init__(
             agent_name=agent_name,
             kernel=kernel,
@@ -64,56 +74,48 @@ class HumanAgent(BaseAgent):
             tools=tools,
             system_message=system_message,
             client=client,
-            definition=definition
+            definition=definition,
         )
-        
-    async def handle_human_feedback(self, kernel_arguments: KernelArguments) -> str:
+
+    async def handle_human_feedback(self, human_feedback: HumanFeedback) -> str:
         """Handle human feedback on a step.
-        
+
+        This method processes feedback provided by a human user on a specific step in a plan.
+        It updates the step with the feedback, marks the step as completed, and notifies the
+        GroupChatManager by creating an ApprovalRequest in the memory store.
+
         Args:
-            kernel_arguments: Contains the human_feedback_json string
-            
+            human_feedback: The HumanFeedback object containing feedback details
+                           including step_id, session_id, and human_feedback text
+
         Returns:
-            Status message
+            Status message indicating success or failure of processing the feedback
         """
-        # Parse the human feedback
-        human_feedback_json = kernel_arguments["human_feedback_json"]
-        human_feedback = HumanFeedback.parse_raw(human_feedback_json)
-        
+
         # Get the step
-        step = await self._memory_store.get_step(human_feedback.step_id, human_feedback.session_id)
+        step = await self._memory_store.get_step(
+            human_feedback.step_id, human_feedback.session_id
+        )
         if not step:
             return f"Step {human_feedback.step_id} not found"
-        
+
         # Update the step with the feedback
         step.human_feedback = human_feedback.human_feedback
-        step.updated_action = human_feedback.updated_action
-        
-        if human_feedback.approved:
-            step.status = StepStatus.approved
-        else:
-            step.status = StepStatus.needs_update
-        
+        step.status = StepStatus.completed
+
         # Save the updated step
         await self._memory_store.update_step(step)
-        
-        # If approved and updated action is provided, update the step's action
-        if human_feedback.approved and human_feedback.updated_action:
-            step.action = human_feedback.updated_action
-            await self._memory_store.update_step(step)
-        
-        # Add a record of the feedback to the memory store
         await self._memory_store.add_item(
             AgentMessage(
                 session_id=human_feedback.session_id,
-                user_id=self._user_id,
+                user_id=step.user_id,
                 plan_id=step.plan_id,
                 content=f"Received feedback for step: {step.action}",
-                source="HumanAgent",
+                source=AgentType.HUMAN.value,
                 step_id=human_feedback.step_id,
             )
         )
-        
+
         # Track the event
         track_event_if_configured(
             f"Human Agent - Received feedback for step and added into the cosmos",
@@ -122,62 +124,64 @@ class HumanAgent(BaseAgent):
                 "user_id": self._user_id,
                 "plan_id": step.plan_id,
                 "content": f"Received feedback for step: {step.action}",
-                "source": "HumanAgent",
+                "source": AgentType.HUMAN.value,
                 "step_id": human_feedback.step_id,
             },
         )
-        
-        # Notify the GroupChatManager
-        if human_feedback.approved:
-            # Create a request to execute the next step
-            group_chat_manager_id = f"group_chat_manager_{human_feedback.session_id}"
-            
-            # Use GroupChatManager's execute_next_step method
-            if hasattr(self._kernel, 'get_service'):
-                group_chat_manager = self._kernel.get_service(group_chat_manager_id)
-                if group_chat_manager:
-                    await group_chat_manager.execute_next_step(
-                        KernelArguments(
-                            session_id=human_feedback.session_id, 
-                            plan_id=step.plan_id
-                        )
-                    )
-                    
-            # Track the approval request event
-            track_event_if_configured(
-                f"Human Agent - Approval request sent for step and added into the cosmos",
-                {
-                    "session_id": human_feedback.session_id,
-                    "user_id": self._user_id,
-                    "plan_id": step.plan_id,
-                    "step_id": human_feedback.step_id,
-                    "agent_id": "GroupChatManager",
-                },
+
+        # Notify the GroupChatManager that the step has been completed
+        await self._memory_store.add_item(
+            ApprovalRequest(
+                session_id=human_feedback.session_id,
+                user_id=self._user_id,
+                plan_id=step.plan_id,
+                step_id=human_feedback.step_id,
+                agent_id=AgentType.GROUP_CHAT_MANAGER.value,
             )
-        
+        )
+
+        # Track the approval request event
+        track_event_if_configured(
+            f"Human Agent - Approval request sent for step and added into the cosmos",
+            {
+                "session_id": human_feedback.session_id,
+                "user_id": self._user_id,
+                "plan_id": step.plan_id,
+                "step_id": human_feedback.step_id,
+                "agent_id": "GroupChatManager",
+            },
+        )
+
         return "Human feedback processed successfully"
-        
-    async def provide_clarification(self, kernel_arguments: KernelArguments) -> str:
+
+    async def provide_clarification(
+        self, human_clarification: HumanClarification
+    ) -> str:
         """Provide clarification on a plan.
-        
+
+        This method stores human clarification information for a plan associated with a session.
+        It retrieves the plan from memory, updates it with the clarification text, and records
+        the event in telemetry.
+
         Args:
-            kernel_arguments: Contains session_id and clarification_text
-            
+            human_clarification: The HumanClarification object containing the session_id
+                                and clarification_text provided by the human user
+
         Returns:
-            Status message
+            Status message indicating success or failure of adding the clarification
         """
-        session_id = kernel_arguments["session_id"]
-        clarification_text = kernel_arguments["clarification_text"]
-        
+        session_id = human_clarification.session_id
+        clarification_text = human_clarification.clarification_text
+
         # Get the plan associated with this session
         plan = await self._memory_store.get_plan_by_session(session_id)
         if not plan:
             return f"No plan found for session {session_id}"
-        
+
         # Update the plan with the clarification
         plan.human_clarification_response = clarification_text
         await self._memory_store.update_plan(plan)
-        
+
         # Track the event
         track_event_if_configured(
             "Human Agent - Provided clarification for plan",
@@ -188,5 +192,5 @@ class HumanAgent(BaseAgent):
                 "clarification": clarification_text,
             },
         )
-        
+
         return f"Clarification provided for plan {plan.id}"

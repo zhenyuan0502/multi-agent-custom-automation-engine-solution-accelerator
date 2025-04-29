@@ -1,5 +1,5 @@
 {
-  "agent_name": "HumanAgent",
+  "agent_name": "Human_Agent",
   "system_message": "You are representing a human user in the conversation. You handle interactions that require human feedback or input, such as providing clarification, approving plans, or giving feedback on steps.",
   "tools": [
     {
