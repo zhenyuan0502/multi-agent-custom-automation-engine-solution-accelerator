@@ -95,7 +95,7 @@ class BaseAgent(AzureAIAgent):
         super().__init__(
             kernel=kernel,
             deployment_name=None,  # Set as needed
-            plugins=None,  # Use the loaded plugins,
+            plugins=tools,  # Use the loaded plugins,
             endpoint=None,  # Set as needed
             api_version=None,  # Set as needed
             token=None,  # Set as needed
@@ -119,9 +119,6 @@ class BaseAgent(AzureAIAgent):
         # Required properties for AgentGroupChat compatibility
         self.name = agent_name  # This is crucial for AgentGroupChat to identify agents
 
-        # Register the handler functions
-        self._register_functions()
-
     # @property
     # def plugins(self) -> Optional[dict[str, Callable]]:
     #     """Get the plugins for this agent.
@@ -140,36 +137,16 @@ class BaseAgent(AzureAIAgent):
 
         This method must be called after creating the agent to complete initialization.
         """
+        logging.info(f"Initializing agent: {self._agent_name}")
         # Create Azure AI Agent or fallback
         self._agent = await config.create_azure_ai_agent(
             kernel=self._kernel,
             agent_name=self._agent_name,
             instructions=self._system_message,
+            tools=self._tools,
         )
         # Tools are registered with the kernel via get_tools_from_config
         return self
-
-    def _register_functions(self):
-        """Register this agent's functions with the kernel."""
-        # Use the kernel function decorator approach instead of from_native_method
-        # which isn't available in SK 1.28.0
-        function_name = "handle_action_request"
-
-        # Define the function using the kernel function decorator
-        @kernel_function(
-            description="Handle an action request from another agent or the system",
-            name=function_name,
-        )
-        async def handle_action_request_wrapper(*args, **kwargs):
-            # Forward to the instance method
-            return await self.handle_action_request(*args, **kwargs)
-
-        # Wrap the decorated function into a KernelFunction and register under this agent's plugin
-        kernel_func = KernelFunction.from_method(handle_action_request_wrapper)
-        # Use agent name as plugin for handler
-        self._kernel.add_function(self._agent_name, kernel_func)
-
-    # Required method for AgentGroupChat compatibility
 
     async def handle_action_request(self, action_request: ActionRequest) -> str:
         """Handle an action request from another agent or the system.
@@ -213,9 +190,7 @@ class BaseAgent(AzureAIAgent):
 
             # Call the agent to handle the action
             async_generator = self._agent.invoke(
-                # messages=f"{json.dumps(self._chat_history)}\n\n
                 messages=f"{action_request.action}\n\nPlease perform this action"
-                # messages=action_request.action
             )
 
             response_content = ""
@@ -312,73 +287,11 @@ class BaseAgent(AzureAIAgent):
 
         return response.json()
 
-    async def invoke_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
-        """Invoke a specific tool by name with the provided arguments.
-
-        Args:
-            tool_name: The name of the tool to invoke
-            arguments: A dictionary of arguments to pass to the tool
-
-        Returns:
-            The result of the tool invocation as a string
-
-        Raises:
-            ValueError: If the tool is not found
-        """
-        # Find the tool by name in the agent's tools list
-        tool = next((t for t in self._tools if t.name == tool_name), None)
-
-        if not tool:
-            # Try looking up the tool in the kernel's plugins
-            plugin_name = f"{self._agent_name.lower().replace('agent', '')}_plugin"
-            try:
-                tool = self._kernel.get_function(plugin_name, tool_name)
-            except Exception:
-                raise ValueError(
-                    f"Tool '{tool_name}' not found in agent tools or kernel plugins"
-                )
-
-        if not tool:
-            raise ValueError(f"Tool '{tool_name}' not found")
-
-        try:
-            # Create kernel arguments from the dictionary
-            kernel_args = KernelArguments()
-            for key, value in arguments.items():
-                kernel_args[key] = value
-
-            # Invoke the tool
-            logging.info(f"Invoking tool '{tool_name}' with arguments: {arguments}")
-
-            # Use invoke_with_args_dict directly instead of relying on KernelArguments
-            if hasattr(tool, "invoke_with_args_dict") and callable(
-                tool.invoke_with_args_dict
-            ):
-                result = await tool.invoke_with_args_dict(arguments)
-            else:
-                # Fall back to standard invoke method
-                result = await tool.invoke(kernel_args)
-
-            # Log telemetry if configured
-            track_event_if_configured(
-                "AgentToolInvocation",
-                {
-                    "agent_name": self._agent_name,
-                    "tool_name": tool_name,
-                    "session_id": self._session_id,
-                    "user_id": self._user_id,
-                },
-            )
-
-            return str(result)
-        except Exception as e:
-            logging.error(f"Error invoking tool '{tool_name}': {str(e)}")
-            raise
-
     @staticmethod
     def create_dynamic_function(
         name: str,
         response_template: str,
+        description: Optional[str] = None,
         formatting_instr: str = DEFAULT_FORMATTING_INSTRUCTIONS,
     ) -> Callable[..., Awaitable[str]]:
         """Create a dynamic function for agent tools based on the name and template.
@@ -409,7 +322,10 @@ class BaseAgent(AzureAIAgent):
         dynamic_function.__name__ = name
 
         # Create a wrapped kernel function that matches the expected signature
-        @kernel_function(description=f"Dynamic function: {name}", name=name)
+        logging.info(f"Creating dynamic function: {name} {len(name)}")
+        logging.info(f"Description: {description} {len(description)}")
+
+        @kernel_function(description=f"Dynamic function {name}", name=name)
         async def kernel_wrapper(
             kernel_arguments: KernelArguments = None, **kwargs
         ) -> str:

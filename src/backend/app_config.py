@@ -9,6 +9,7 @@ from azure.ai.projects.aio import AIProjectClient
 from semantic_kernel.kernel import Kernel
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
+from semantic_kernel.functions import KernelFunction
 
 # Load environment variables from .env file
 load_dotenv()
@@ -193,9 +194,7 @@ class AppConfig:
         kernel: Kernel,
         agent_name: str,
         instructions: str,
-        agent_type: str = "assistant",
-        tools=None,
-        tool_resources=None,
+        tools: Optional[List[KernelFunction]] = None,
         response_format=None,
         temperature: float = 0.0,
     ):
@@ -228,7 +227,10 @@ class AppConfig:
 
                 # Create the agent instance directly with project_client and existing definition
                 agent = AzureAIAgent(
-                    client=project_client, definition=existing_definition, kernel=kernel
+                    client=project_client,
+                    definition=existing_definition,
+                    kernel=kernel,
+                    plugins=tools,
                 )
 
                 logging.info(
@@ -248,52 +250,22 @@ class AppConfig:
                         f"Unexpected error while retrieving agent {agent_name}: {str(e)}. Attempting to create new agent."
                     )
 
-            # Tool handling: We need to distinguish between our SK functions and
-            # the tool definitions needed by project_client.agents.create_agent
-            tool_definitions = None
-            kernel_functions = []
-
-            # If tools are provided and they are SK KernelFunctions, we need to handle them differently
-            # than if they are already tool definitions expected by AIProjectClient
-            if tools:
-                # Check if tools are SK KernelFunctions
-                if all(
-                    hasattr(tool, "name") and hasattr(tool, "invoke") for tool in tools
-                ):
-                    # Store the kernel functions to register with the agent later
-                    kernel_functions = tools
-                    # For now, we don't extract tool definitions from kernel functions
-                    # This would require additional code to convert SK functions to AI Project tool definitions
-                    logging.warning(
-                        "Kernel functions provided as tools will be registered with the agent after creation"
-                    )
-                else:
-                    # Assume these are already proper tool definitions for create_agent
-                    tool_definitions = tools
-
-            logging.info(f"Creating new agent with ID: {agent_name}")
-
             # Create the agent using the project client with the agent_name as both name and assistantId
             agent_definition = await project_client.agents.create_agent(
                 model=self.AZURE_OPENAI_DEPLOYMENT_NAME,
                 name=agent_name,
                 instructions=instructions,
-                tools=tool_definitions,
-                tool_resources=tool_resources,
                 temperature=temperature,
                 response_format=response_format,
             )
 
             # Create the agent instance directly with project_client and definition
             agent = AzureAIAgent(
-                client=project_client, definition=agent_definition, kernel=kernel
+                client=project_client,
+                definition=agent_definition,
+                kernel=kernel,
+                plugins=tools,
             )
-
-            # Register the kernel functions with the agent if any were provided
-            if kernel_functions:
-                for function in kernel_functions:
-                    if hasattr(agent, "add_function"):
-                        agent.add_function(function)
 
             return agent
         except Exception as exc:
