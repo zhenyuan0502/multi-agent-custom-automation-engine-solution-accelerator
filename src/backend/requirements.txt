@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+
 azure-cosmos
 azure-monitor-opentelemetry
 azure-monitor-events-extension

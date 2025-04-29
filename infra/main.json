@@ -5,13 +5,14 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.28.1.47646",
-      "templateHash": "1631755345697758847"
+      "version": "0.34.44.8038",
+      "templateHash": "2906892014954666053"
     }
   },
   "parameters": {
     "location": {
       "type": "string",
+      "defaultValue": "EastUS2",
       "metadata": {
         "description": "Location for all resources."
       }
@@ -25,7 +26,7 @@
     },
     "prefix": {
       "type": "string",
-      "defaultValue": "[take(format('macaeo-{0}', uniqueString(resourceGroup().id)), 10)]",
+      "defaultValue": "macaeo",
       "metadata": {
         "description": "A prefix to add to the start of all resource names. Note: A \"unique\" suffix will also be added"
       }
@@ -244,7 +245,6 @@
       },
       "dependsOn": [
         "aiServices",
-        "aoaiUserRoleDefinition",
         "containerApp"
       ]
     },
@@ -403,9 +403,9 @@
       "dependsOn": [
         "aiServices",
         "appInsights",
-        "cosmos::autogenDb",
         "containerAppEnv",
         "cosmos",
+        "cosmos::autogenDb",
         "cosmos::autogenDb::memoryContainer",
         "pullIdentity"
       ],
@@ -500,8 +500,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.28.1.47646",
-              "templateHash": "9096960510978747660"
+              "version": "0.34.44.8038",
+              "templateHash": "10664495342911727649"
             }
           },
           "parameters": {
@@ -638,8 +638,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.28.1.47646",
-              "templateHash": "8215150938757657777"
+              "version": "0.34.44.8038",
+              "templateHash": "12550713338937452696"
             }
           },
           "parameters": {
@@ -1028,8 +1028,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.28.1.47646",
-              "templateHash": "15814429030073463584"
+              "version": "0.34.44.8038",
+              "templateHash": "11364190519186458619"
             }
           },
           "parameters": {
