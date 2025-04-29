@@ -1,18 +1,18 @@
-import logging
 import json
+import logging
 import os
-from typing import Any, Dict, List, Mapping, Optional, Callable, Awaitable
+from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional, Union
 
 import semantic_kernel as sk
-from semantic_kernel.functions import KernelFunction
-from semantic_kernel.functions.kernel_function_decorator import kernel_function
-from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
+from semantic_kernel.functions import KernelFunction
+from semantic_kernel.functions.kernel_arguments import KernelArguments
+from semantic_kernel.functions.kernel_function_decorator import kernel_function
 
 # Updated imports for compatibility
 try:
     # Try importing from newer structure first
-    from semantic_kernel.contents import ChatMessageContent, ChatHistory
+    from semantic_kernel.contents import ChatHistory, ChatMessageContent
 except ImportError:
     # Fall back to older structure for compatibility
     class ChatMessageContent:
@@ -30,7 +30,10 @@ except ImportError:
             self.messages = []
 
 
+# Import the new AppConfig instance
+from app_config import config
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from event_utils import track_event_if_configured
 from models.messages_kernel import (
     ActionRequest,
     ActionResponse,
@@ -38,10 +41,6 @@ from models.messages_kernel import (
     Step,
     StepStatus,
 )
-
-# Import the new AppConfig instance
-from app_config import config
-from event_utils import track_event_if_configured
 
 # Default formatting instructions used across agents
 DEFAULT_FORMATTING_INSTRUCTIONS = "Instructions: returning the output of this function call verbatim to the user in markdown. Then write AGENT SUMMARY: and then include a summary of what you did."
@@ -77,6 +76,8 @@ class BaseAgent(AzureAIAgent):
             client: The client required by AzureAIAgent
             definition: The definition required by AzureAIAgent
         """
+        # Add plugins if not already set
+        # if not self.plugins:
         # If agent_type is provided, load tools from config automatically
         if agent_type and not tools:
             tools = self.get_tools_from_config(kernel, agent_type)
@@ -94,6 +95,7 @@ class BaseAgent(AzureAIAgent):
         super().__init__(
             kernel=kernel,
             deployment_name=None,  # Set as needed
+            plugins=None,  # Use the loaded plugins,
             endpoint=None,  # Set as needed
             api_version=None,  # Set as needed
             token=None,  # Set as needed
@@ -119,6 +121,15 @@ class BaseAgent(AzureAIAgent):
 
         # Register the handler functions
         self._register_functions()
+
+    # @property
+    # def plugins(self) -> Optional[dict[str, Callable]]:
+    #     """Get the plugins for this agent.
+
+    #     Returns:
+    #         A list of plugins, or None if not applicable.
+    #     """
+    #     return None
 
     def _default_system_message(self, agent_name=None) -> str:
         name = agent_name or getattr(self, "_agent_name", "Agent")
@@ -202,7 +213,9 @@ class BaseAgent(AzureAIAgent):
 
             # Call the agent to handle the action
             async_generator = self._agent.invoke(
-                f"{action_request.action}\n\nPlease perform this action"
+                # messages=f"{json.dumps(self._chat_history)}\n\n
+                messages=f"{action_request.action}\n\nPlease perform this action"
+                # messages=action_request.action
             )
 
             response_content = ""
@@ -477,7 +490,7 @@ class BaseAgent(AzureAIAgent):
         plugin_name = f"{agent_type}_plugin"
 
         # Early return if no tools defined - prevent empty iteration
-        if not config.get("tools"):
+        if not config.get("tools"):  # or agent_type == "Product_Agent":
             logging.info(
                 f"No tools defined for agent type '{agent_type}'. Returning empty list."
             )
