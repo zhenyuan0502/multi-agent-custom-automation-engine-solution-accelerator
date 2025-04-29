@@ -1,11 +1,11 @@
 from typing import List, Optional
 
 import semantic_kernel as sk
-from semantic_kernel.functions import KernelFunction
-
-from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from kernel_agents.agent_base import BaseAgent
+from kernel_agents.product_tools import ProductTools
 from models.messages_kernel import AgentType
+from semantic_kernel.functions import KernelFunction
 
 
 class ProductAgent(BaseAgent):
@@ -71,3 +71,24 @@ class ProductAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @property
+    def plugins(self):
+        """Get the plugins for the syntax checker agent."""
+        return ProductTools.get_all_kernel_functions()
+        # return ["marketing_functions", ProductTools()]
+
+    # Explicitly inherit handle_action_request from the parent class
+    # This is not technically necessary but makes the inheritance explicit
+    async def handle_action_request(self, action_request_json: str) -> str:
+        """Handle an action request from another agent or the system.
+
+        This method is inherited from BaseAgent but explicitly included here for clarity.
+
+        Args:
+            action_request_json: The action request as a JSON string
+
+        Returns:
+            A JSON string containing the action response
+        """
+        return await super().handle_action_request(action_request_json)

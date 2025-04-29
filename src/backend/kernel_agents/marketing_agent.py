@@ -1,11 +1,11 @@
 from typing import List, Optional
 
 import semantic_kernel as sk
-from semantic_kernel.functions import KernelFunction
-
-from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from kernel_agents.agent_base import BaseAgent
+from kernel_agents.marketing_tools import MarketingTools
 from models.messages_kernel import AgentType
+from semantic_kernel.functions import KernelFunction
 
 
 class MarketingAgent(BaseAgent):
@@ -48,7 +48,7 @@ class MarketingAgent(BaseAgent):
         if tools is None:
             # Load the marketing tools configuration
             config = self.load_tools_config("marketing", config_path)
-            tools = self.get_tools_from_config(kernel, "marketing", config_path)
+            tools = self.get_tools(kernel, "marketing", config_path)
 
             # Use system message from config if not explicitly provided
             if not system_message:
@@ -71,3 +71,8 @@ class MarketingAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    # @property
+    # def plugins(self):
+    #     """Get the plugins for the syntax checker agent."""
+    #     return ["marketing_functions", MarketingTools()]
