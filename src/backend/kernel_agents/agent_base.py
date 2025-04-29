@@ -138,51 +138,6 @@ class BaseAgent(AzureAIAgent):
         # Tools are registered with the kernel via get_tools_from_config
         return self
 
-    async def invoke_async(self, *args, **kwargs):
-        """Invoke this agent asynchronously.
-
-        This method is required for compatibility with AgentGroupChat.
-
-        Args:
-            *args: Positional arguments
-            **kwargs: Keyword arguments
-
-        Returns:
-            The agent's response
-        """
-        # Ensure agent is initialized
-        if self._agent is None:
-            await self.async_init()
-
-        # Get the text input from args or kwargs
-        text = None
-        if args and isinstance(args[0], str):
-            text = args[0]
-        elif "text" in kwargs:
-            text = kwargs["text"]
-        elif "arguments" in kwargs and hasattr(kwargs["arguments"], "get"):
-            text = kwargs["arguments"].get("text") or kwargs["arguments"].get("input")
-
-        if not text:
-            settings = kwargs.get("settings", {})
-            if isinstance(settings, dict) and "input" in settings:
-                text = settings["input"]
-
-        # If text is still not found, create a default message
-        if not text:
-            text = "Hello, please assist with a task."
-
-        # Use the text to invoke the agent
-        try:
-            logging.info(f"Invoking {self._agent_name} with text: {text[:100]}...")
-            response = await self._agent.invoke(
-                self._kernel, text, settings=kwargs.get("settings", {})
-            )
-            return response
-        except Exception as e:
-            logging.error(f"Error invoking {self._agent_name}: {e}")
-            return f"Error: {str(e)}"
-
     def _register_functions(self):
         """Register this agent's functions with the kernel."""
         # Use the kernel function decorator approach instead of from_native_method
@@ -204,37 +159,6 @@ class BaseAgent(AzureAIAgent):
         self._kernel.add_function(self._agent_name, kernel_func)
 
     # Required method for AgentGroupChat compatibility
-    async def send_message_async(
-        self, message_content: ChatMessageContent, chat_history: ChatHistory
-    ):
-        """Send a message to the agent asynchronously, adding it to chat history.
-
-        Args:
-            message_content: The content of the message
-            chat_history: The chat history
-
-        Returns:
-            None
-        """
-        # Convert message to format expected by the agent
-        if hasattr(message_content, "role") and hasattr(message_content, "content"):
-            self._chat_history.append(
-                {"role": message_content.role, "content": message_content.content}
-            )
-
-        # If chat history is provided, update our internal history
-        if chat_history and hasattr(chat_history, "messages"):
-            # Update with the latest messages from chat history
-            for msg in chat_history.messages[
-                -5:
-            ]:  # Only use last 5 messages to avoid history getting too long
-                if msg not in self._chat_history:
-                    self._chat_history.append(
-                        {"role": msg.role, "content": msg.content}
-                    )
-
-        # No need to return anything as we're just updating state
-        return None
 
     async def handle_action_request(self, action_request: ActionRequest) -> str:
         """Handle an action request from another agent or the system.
@@ -274,11 +198,11 @@ class BaseAgent(AzureAIAgent):
 
         try:
             # Use the agent to process the action
-            chat_history = self._chat_history.copy()
+            # chat_history = self._chat_history.copy()
 
             # Call the agent to handle the action
             async_generator = self._agent.invoke(
-                self._kernel, f"{action_request.action}\n\nPlease perform this action"
+                f"{action_request.action}\n\nPlease perform this action"
             )
 
             response_content = ""
