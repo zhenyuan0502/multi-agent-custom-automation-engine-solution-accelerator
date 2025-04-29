@@ -323,7 +323,6 @@ class BaseAgent(AzureAIAgent):
 
         # Create a wrapped kernel function that matches the expected signature
         logging.info(f"Creating dynamic function: {name} {len(name)}")
-        logging.info(f"Description: {description} {len(description)}")
 
         @kernel_function(description=f"Dynamic function {name}", name=name)
         async def kernel_wrapper(
