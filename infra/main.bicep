@@ -1,13 +1,37 @@
-@description('Location for all resources.')
-param location string = 'EastUS2' //Fixed for model availability, change back to resourceGroup().location
+param location string
 
-@description('Location for OpenAI resources.')
-param azureOpenAILocation string = 'japaneast' //Fixed for model availability
+@allowed([
+  'australiaeast'
+  'brazilsouth'
+  'canadacentral'
+  'canadaeast'
+  'eastus'
+  'eastus2'
+  'francecentral'
+  'germanywestcentral'
+  'japaneast'
+  'koreacentral'
+  'northcentralus'
+  'norwayeast'
+  'polandcentral'
+  'southafricanorth'
+  'southcentralus'
+  'southindia'
+  'swedencentral'
+  'switzerlandnorth'
+  'uaenorth'
+  'uksouth'
+  'westeurope'
+  'westus'
+  'westus3'
+])
+@description('Location for all Ai services resources. This location can be different from the resource group location.')
+param azureOpenAILocation string // The location used for all deployed resources.  This location must be in the same region as the resource group.
 
-
-
-@description('A prefix to add to the start of all resource names. Note: A "unique" suffix will also be added')
-param prefix string = 'macaeo'
+@minLength(3)
+@maxLength(20)
+@description('Prefix for all resources created by this template.  This prefix will be used to create unique names for all resources.  The prefix must be unique within the resource group.')
+param prefix string
 
 @description('Tags to apply to all deployed resources')
 param tags object = {}
