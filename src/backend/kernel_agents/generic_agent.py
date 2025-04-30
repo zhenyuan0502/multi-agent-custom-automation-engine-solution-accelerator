@@ -2,12 +2,11 @@ import logging
 from typing import List, Optional
 
 import semantic_kernel as sk
-from semantic_kernel.functions import KernelFunction
-
-from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from kernel_agents.agent_base import BaseAgent
+from kernel_tools.generic_tools import GenericTools
 from models.messages_kernel import AgentType
-from src.backend.kernel_tools.generic_tools import GenericTools
+from semantic_kernel.functions import KernelFunction
 
 
 class GenericAgent(BaseAgent):

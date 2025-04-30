@@ -1,12 +1,11 @@
 from typing import List, Optional
 
 import semantic_kernel as sk
-from semantic_kernel.functions import KernelFunction
-
-from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from kernel_agents.agent_base import BaseAgent
+from kernel_tools.procurement_tools import ProcurementTools
 from models.messages_kernel import AgentType
-from src.backend.kernel_tools.procurement_tools import ProcurementTools
+from semantic_kernel.functions import KernelFunction
 
 
 class ProcurementAgent(BaseAgent):
