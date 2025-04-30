@@ -466,8 +466,8 @@ class ProcurementTools:
         )
 
     @staticmethod
-    @kernel_function(description="Handle procurement risk assessment.")
-    async def handle_procurement_risk_assessment(risk_details: str) -> str:
+    @kernel_function(description="assess procurement risk assessment.")
+    async def assess_procurement_risk(risk_details: str) -> str:
         return (
             f"##### Procurement Risk Assessment\n"
             f"**Details:** {risk_details}\n\n"
