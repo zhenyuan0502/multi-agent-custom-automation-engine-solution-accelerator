@@ -128,12 +128,15 @@ class BaseAgent(AzureAIAgent):
         """
         logging.info(f"Initializing agent: {self._agent_name}")
         # Create Azure AI Agent or fallback
-        self._agent = await config.create_azure_ai_agent(
-            kernel=self._kernel,
-            agent_name=self._agent_name,
-            instructions=self._system_message,
-            tools=self._tools,
-        )
+        if not self._agent:
+            self._agent = await config.create_azure_ai_agent(
+                kernel=self._kernel,
+                agent_name=self._agent_name,
+                instructions=self._system_message,
+                tools=self._tools,
+            )
+        else:
+            logging.info(f"Agent {self._agent_name} already initialized.")
         # Tools are registered with the kernel via get_tools_from_config
         return self
 
@@ -247,8 +250,6 @@ class BaseAgent(AzureAIAgent):
                 status=StepStatus.failed,
             )
             return response.json()
-
-        logging.info(f"Task completed: {response_content}")
 
         # Update step status
         step.status = StepStatus.completed

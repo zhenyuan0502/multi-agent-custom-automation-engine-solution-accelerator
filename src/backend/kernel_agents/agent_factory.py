@@ -129,6 +129,9 @@ class AgentFactory:
             session_id in cls._agent_cache
             and agent_type in cls._agent_cache[session_id]
         ):
+            logger.info(
+                f"Returning cached agent instance for session {session_id} and agent type {agent_type}"
+            )
             return cls._agent_cache[session_id][agent_type]
 
         # Get the agent class
@@ -302,7 +305,7 @@ class AgentFactory:
 
         # Phase 2: Create the planner agent with agent_instances
         planner_agent = await cls.create_agent(
-            agent_type=planner_agent_type,
+            agent_type=AgentType.PLANNER,
             session_id=session_id,
             user_id=user_id,
             temperature=temperature,

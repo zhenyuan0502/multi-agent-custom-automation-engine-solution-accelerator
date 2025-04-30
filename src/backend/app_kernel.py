@@ -135,7 +135,6 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
 
         # Convert input task to JSON for the kernel function, add user_id here
 
-        logging.info(f"Input task: {input_task}")
         # Use the planner to handle the task
         result = await group_chat_manager.handle_input_task(input_task)
 

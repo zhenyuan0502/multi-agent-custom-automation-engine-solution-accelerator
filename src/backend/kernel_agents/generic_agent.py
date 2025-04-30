@@ -43,14 +43,8 @@ class GenericAgent(BaseAgent):
         if not tools:
             # Get tools directly from GenericTools class
             tools_dict = GenericTools.get_all_kernel_functions()
-            logging.info(
-                f"GenericAgent: Got tools_dict with {len(tools_dict)} functions: {list(tools_dict.keys())}"
-            )
 
             tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
-            logging.info(
-                f"GenericAgent: Created {len(tools)} KernelFunctions from tools_dict"
-            )
 
             # Use system message from config if not explicitly provided
             if not system_message:
