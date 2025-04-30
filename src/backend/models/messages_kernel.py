@@ -1,13 +1,9 @@
 import uuid
-from enum import Enum
-from typing import Dict, List, Literal, Optional, Any
 from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Literal, Optional
 
-from semantic_kernel.kernel_pydantic import KernelBaseModel, Field
-
-
-# Since we're not using autogen's message classes, we'll define our own message types
-# that work with Semantic Kernel's approach
+from semantic_kernel.kernel_pydantic import Field, KernelBaseModel
 
 
 # Classes specifically for handling runtime interrupts
