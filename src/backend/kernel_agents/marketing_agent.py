@@ -37,7 +37,6 @@ class MarketingAgent(BaseAgent):
             tools: List of tools available to this agent (optional)
             system_message: Optional system message for the agent
             agent_name: Optional name for the agent (defaults to "MarketingAgent")
-            config_path: Optional path to the Marketing tools configuration file
             client: Optional client instance
             definition: Optional definition instance
         """
@@ -47,18 +46,12 @@ class MarketingAgent(BaseAgent):
             tools_dict = MarketingTools.get_all_kernel_functions()
             tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
 
-            # Load the marketing tools configuration for system message
-            config = self.load_tools_config("marketing", config_path)
+        # Use system message from config if not explicitly provided
+        if not system_message:
+            system_message = self.default_system_message(agent_name)
 
-            # Use system message from config if not explicitly provided
-            if not system_message:
-                system_message = config.get(
-                    "system_message",
-                    "You are an AI Agent. You have knowledge about marketing, including campaigns, market research, and promotional activities.",
-                )
-
-            # Use agent name from config if available
-            agent_name = AgentType.MARKETING.value
+        # Use agent name from config if available
+        agent_name = AgentType.MARKETING.value
 
         super().__init__(
             agent_name=agent_name,
@@ -71,6 +64,16 @@ class MarketingAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @staticmethod
+    def default_system_message(agent_name=None) -> str:
+        """Get the default system message for the agent.
+        Args:
+            agent_name: The name of the agent (optional)
+        Returns:
+            The default system message for the agent
+        """
+        return "You are a Marketing agent. You specialize in marketing strategy, campaign development, content creation, and market analysis. You help create effective marketing campaigns, analyze market data, and develop promotional content for products and services."
 
     @property
     def plugins(self):

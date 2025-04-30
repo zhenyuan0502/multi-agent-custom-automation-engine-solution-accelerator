@@ -59,7 +59,6 @@ class BaseAgent(AzureAIAgent):
         memory_store: CosmosMemoryContext,
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
-        agent_type: Optional[str] = None,
         client=None,
         definition=None,
     ):
@@ -77,20 +76,9 @@ class BaseAgent(AzureAIAgent):
             client: The client required by AzureAIAgent
             definition: The definition required by AzureAIAgent
         """
-        # Add plugins if not already set
-        # if not self.plugins:
-        # If agent_type is provided, load tools from config automatically
-        if agent_type and not tools:
-            tools = self.get_tools_from_config(kernel, agent_type)
-            # If system_message isn't provided, try to get it from config
-            if not system_message:
-                config = self.load_tools_config(agent_type)
-                system_message = config.get(
-                    "system_message", self._default_system_message(agent_name)
-                )
-        else:
-            tools = tools or []
-        system_message = system_message or self._default_system_message(agent_name)
+
+        tools = tools or []
+        system_message = system_message or self.default_system_message(agent_name)
 
         # Call AzureAIAgent constructor with required client and definition
         super().__init__(
@@ -128,9 +116,9 @@ class BaseAgent(AzureAIAgent):
     #         A list of plugins, or None if not applicable.
     #     """
     #     return None
-
-    def _default_system_message(self, agent_name=None) -> str:
-        name = agent_name or getattr(self, "_agent_name", "Agent")
+    @staticmethod
+    def default_system_message(agent_name=None) -> str:
+        name = agent_name
         return f"You are an AI assistant named {name}. Help the user by providing accurate and helpful information."
 
     async def async_init(self):
@@ -292,179 +280,6 @@ class BaseAgent(AzureAIAgent):
         )
 
         return response.json()
-
-    @staticmethod
-    def create_dynamic_function(
-        name: str,
-        response_template: str,
-        description: Optional[str] = None,
-        formatting_instr: str = DEFAULT_FORMATTING_INSTRUCTIONS,
-    ) -> Callable[..., Awaitable[str]]:
-        """Create a dynamic function for agent tools based on the name and template.
-
-        Args:
-            name: The name of the function to create
-            response_template: The template string to use for the response
-            formatting_instr: Optional formatting instructions to append to the response
-
-        Returns:
-            A dynamic async function that can be registered with the semantic kernel
-        """
-
-        # Truncate function name to 64 characters if it exceeds the limit
-        if len(name) > 64:
-            logging.warning(
-                f"Function name '{name}' exceeds 64 characters (length: {len(name)}). Truncating to 64 characters."
-            )
-            name = name[:64]
-
-        async def dynamic_function(**kwargs) -> str:
-            try:
-                # Format the template with the provided kwargs
-                formatted_response = response_template.format(**kwargs)
-                # Append formatting instructions if not already included in the template
-                if formatting_instr and formatting_instr not in formatted_response:
-                    formatted_response = f"{formatted_response}\n{formatting_instr}"
-                return formatted_response
-            except KeyError as e:
-                return f"Error: Missing parameter {e} for {name}"
-            except Exception as e:
-                return f"Error processing {name}: {str(e)}"
-
-        # Name the function properly for better debugging
-        dynamic_function.__name__ = name
-
-        # Create a wrapped kernel function that matches the expected signature
-        logging.info(f"Creating dynamic function: {name} {len(name)}")
-
-        @kernel_function(description=f"Dynamic function {name}", name=name)
-        async def kernel_wrapper(
-            kernel_arguments: KernelArguments = None, **kwargs
-        ) -> str:
-            # Combine all arguments into one dictionary
-            all_args = {}
-            if kernel_arguments:
-                for key, value in kernel_arguments.items():
-                    all_args[key] = value
-            all_args.update(kwargs)
-            return await dynamic_function(**all_args)
-
-        return kernel_wrapper
-
-    @staticmethod
-    def load_tools_config(
-        filename: str, config_path: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Load tools configuration from a JSON file.
-
-        Args:
-            filename: The filename without extension (e.g., "hr", "marketing")
-            config_path: Optional explicit path to the configuration file
-
-        Returns:
-            A dictionary containing the configuration
-        """
-        if config_path is None:
-            # Default path relative to the tools directory
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            backend_dir = os.path.dirname(
-                current_dir
-            )  # Just one level up to get to backend dir
-
-            # Normalize filename to avoid issues with spaces and capitalization
-            # Convert "Hr Agent" to "hr" and "TechSupport Agent" to "tech_support"
-            logging.info(f"Normalizing filename: {filename}")
-            normalized_filename = filename.replace(" ", "_").replace("-", "_").lower()
-            # If it ends with "_agent", remove it
-            if normalized_filename.endswith("_agent"):
-                normalized_filename = normalized_filename[:-6]
-
-            config_path = os.path.join(
-                backend_dir, "tools", f"{normalized_filename}_tools.json"
-            )
-            logging.info(f"Looking for tools config at: {config_path}")
-
-        try:
-            with open(config_path, "r") as f:
-                return json.load(f)
-        except Exception as e:
-            logging.error(f"Error loading {filename} tools configuration: {e}")
-            # Return empty default configuration
-            return {
-                "agent_name": f"{filename.capitalize()}Agent",
-                "system_message": "You are an AI assistant",
-                "tools": [],
-            }
-
-    @classmethod
-    def get_tools_from_config(
-        cls, kernel: sk.Kernel, agent_type: str, config_path: Optional[str] = None
-    ) -> List[KernelFunction]:
-        """Get the list of tools for an agent from configuration.
-
-        Args:
-            kernel: The semantic kernel instance
-            agent_type: The type of agent (e.g., "marketing", "hr")
-            config_path: Optional explicit path to the configuration file
-
-        Returns:
-            A list of KernelFunction objects representing the tools
-        """
-        # Load configuration
-        config = cls.load_tools_config(agent_type, config_path)
-
-        # Convert the configured tools to kernel functions
-        kernel_functions = []
-        plugin_name = f"{agent_type}_plugin"
-
-        # Early return if no tools defined - prevent empty iteration
-        if not config.get("tools"):  # or agent_type == "Product_Agent":
-            logging.info(
-                f"No tools defined for agent type '{agent_type}'. Returning empty list."
-            )
-            return kernel_functions
-
-        for tool in config.get("tools", []):
-            try:
-                function_name = tool["name"]
-                description = tool.get("description", "")
-                # Create a dynamic function using the JSON response_template
-                response_template = (
-                    tool.get("response_template") or tool.get("prompt_template") or ""
-                )
-
-                # Generate a dynamic function using our improved approach
-                dynamic_fn = cls.create_dynamic_function(
-                    function_name, response_template
-                )
-
-                # Create kernel function from the decorated function
-                kernel_func = KernelFunction.from_method(dynamic_fn)
-
-                # Add parameter metadata from JSON to the kernel function
-                for param in tool.get("parameters", []):
-                    param_name = param.get("name", "")
-                    param_desc = param.get("description", "")
-                    param_type = param.get("type", "string")
-
-                    # Set this parameter in the function's metadata
-                    if param_name:
-                        logging.info(
-                            f"Adding parameter '{param_name}' to function '{function_name}'"
-                        )
-
-                # Register the function with the kernel
-
-                kernel_functions.append(kernel_func)
-                logging.info(
-                    f"Successfully created dynamic tool '{function_name}' for {agent_type}"
-                )
-            except Exception as e:
-                logging.error(
-                    f"Failed to create tool '{tool.get('name', 'unknown')}': {str(e)}"
-                )
-
-        return kernel_functions
 
     def save_state(self) -> Mapping[str, Any]:
         """Save the state of this agent."""

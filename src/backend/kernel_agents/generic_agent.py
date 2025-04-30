@@ -6,7 +6,6 @@ from context.cosmos_memory_kernel import CosmosMemoryContext
 from kernel_agents.agent_base import BaseAgent
 from kernel_tools.generic_tools import GenericTools
 from models.messages_kernel import AgentType
-from semantic_kernel.functions import KernelFunction
 
 
 class GenericAgent(BaseAgent):
@@ -21,7 +20,6 @@ class GenericAgent(BaseAgent):
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
         agent_name: str = AgentType.GENERIC.value,
-        config_path: Optional[str] = None,
         client=None,
         definition=None,
     ) -> None:
@@ -52,17 +50,9 @@ class GenericAgent(BaseAgent):
                 f"GenericAgent: Created {len(tools)} KernelFunctions from tools_dict"
             )
 
-            # Load the generic tools configuration for system message
-            config = self.load_tools_config("generic", config_path)
-
             # Use system message from config if not explicitly provided
             if not system_message:
-                system_message = config.get(
-                    "system_message",
-                    "You are a generic agent. You are used to handle generic tasks that a general Large Language Model can assist with. "
-                    "You are being called as a fallback, when no other agents are able to use their specialised functions in order to solve "
-                    "the user's task. Summarize back to the user what was done.",
-                )
+                system_message = self.default_system_message(agent_name)
 
             # Use agent name from config if available
             agent_name = AgentType.GENERIC.value
@@ -79,6 +69,16 @@ class GenericAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @staticmethod
+    def default_system_message(agent_name=None) -> str:
+        """Get the default system message for the agent.
+        Args:
+            agent_name: The name of the agent (optional)
+        Returns:
+            The default system message for the agent
+        """
+        return "You are a Generic agent that can help with general questions and provide basic information. You can search for information and perform simple calculations."
 
     @property
     def plugins(self):

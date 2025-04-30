@@ -23,7 +23,6 @@ class TechSupportAgent(BaseAgent):
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
         agent_name: str = AgentType.TECH_SUPPORT.value,
-        config_path: Optional[str] = None,
         client=None,
         definition=None,
     ) -> None:
@@ -47,18 +46,12 @@ class TechSupportAgent(BaseAgent):
             tools_dict = TechSupportTools.get_all_kernel_functions()
             tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
 
-            # Load the tech support tools configuration for system message
-            config = self.load_tools_config("tech_support", config_path)
+        # Use system message from config if not explicitly provided
+        if not system_message:
+            system_message = self.default_system_message(agent_name)
 
-            # Use system message from config if not explicitly provided
-            if not system_message:
-                system_message = config.get(
-                    "system_message",
-                    "You are a Tech Support agent. You can assist with technical issues, IT administration, equipment setup, and software/hardware troubleshooting. When asked to call a function, you should summarize back what was done.",
-                )
-
-            # Use agent name from config if available
-            agent_name = AgentType.TECH_SUPPORT.value
+        # Use agent name from config if available
+        agent_name = AgentType.TECH_SUPPORT.value
 
         super().__init__(
             agent_name=agent_name,
@@ -71,6 +64,16 @@ class TechSupportAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @staticmethod
+    def default_system_message(agent_name=None) -> str:
+        """Get the default system message for the agent.
+        Args:
+            agent_name: The name of the agent (optional)
+        Returns:
+            The default system message for the agent
+        """
+        return "You are a Product agent. You have knowledge about product management, development, and compliance guidelines. When asked to call a function, you should summarize back what was done."
 
     @property
     def plugins(self):
