@@ -21,9 +21,10 @@ class MarketingTools:
     async def analyze_market_trends(industry: str) -> str:
         return f"Market trends analyzed for the '{industry}' industry."
 
+    # ToDo: Seems to be a bug in SK when processing functions with list parameters
     @staticmethod
     @kernel_function(description="Generate social media posts for a campaign.")
-    async def generate_social_posts(campaign_name: str, platforms: list) -> str:
+    async def generate_social_posts(campaign_name: str, platforms: List[str]) -> str:
         platforms_str = ", ".join(platforms)
         return f"Social media posts for campaign '{campaign_name}' generated for platforms: {platforms_str}."
 
@@ -253,10 +254,11 @@ class MarketingTools:
     async def optimize_conversion_funnel(stage: str) -> str:
         return f"Conversion funnel stage '{stage}' optimized."
 
+    # ToDo: Seems to be a bug in SK when processing functions with list parameters
     @staticmethod
     @kernel_function(description="Run an influencer marketing campaign.")
     async def run_influencer_campaign(
-        campaign_name: str, influencers: list
+        campaign_name: str, influencers: List[str]
     ) -> str:
         influencers_str = ", ".join(influencers)
         return f"Influencer marketing campaign '{campaign_name}' run with influencers: {influencers_str}."
