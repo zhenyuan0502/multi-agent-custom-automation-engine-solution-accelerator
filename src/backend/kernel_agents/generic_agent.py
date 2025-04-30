@@ -7,7 +7,7 @@ from semantic_kernel.functions import KernelFunction
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
-from src.backend.kernel_tools.generic_tools import GenericTools
+from kernel_tools.generic_tools import GenericTools
 
 
 class GenericAgent(BaseAgent):

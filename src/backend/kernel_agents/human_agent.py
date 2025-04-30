@@ -18,7 +18,7 @@ from models.messages_kernel import (
     ActionRequest,
 )
 from event_utils import track_event_if_configured
-from src.backend.kernel_tools.human_tools import HumanTools
+from kernel_tools.human_tools import HumanTools
 
 
 class HumanAgent(BaseAgent):
