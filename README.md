@@ -6,8 +6,6 @@ When dealing with complex organizational tasks, users often face significant cha
 
 The Multi-Agent Custom Automation Engine solution accelerator allows users to specify tasks and have them automatically processed by a group of AI agents, each specialized in different aspects of the business. This automation not only saves time but also ensures accuracy and consistency in task execution.
 
-### Technology Note
-This accelerator uses the AutoGen framework from Microsoft Research.  This is an open source project that is maintained by [Microsoft Research’s AI Frontiers Lab](https://www.microsoft.com/research/lab/ai-frontiers/). Please see this [blog post](https://devblogs.microsoft.com/autogen/microsofts-agentic-frameworks-autogen-and-semantic-kernel/) for the latest information on using the AutoGen framework in production solutions.
 <br/>
 
 <div align="center">
@@ -40,9 +38,9 @@ If you'd like to customize the solution accelerator, here are some common areas 
 
 ### Additional resources
 
-[AutoGen Framework Documentation](https://microsoft.github.io/autogen/dev/user-guide/core-user-guide/index.html)
+[Semantic Kernel Documentation](https://learn.microsoft.com/en-us/semantic-kernel/)
 
-[Azure OpenAI Service Documentation](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/use-your-data)
+[Azure AI Foundry Documentation](https://learn.microsoft.com/en-us/azure/ai-foundry/)
 
 [Azure Container App documentation](https://learn.microsoft.com/en-us/azure/azure-functions/functions-how-to-custom-container?tabs=core-tools%2Cacr%2Cazure-cli2%2Cazure-cli&pivots=container-apps)
 
