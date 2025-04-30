@@ -1,5 +1,6 @@
 import inspect
 import time
+import logging
 from datetime import datetime
 from typing import Annotated, Callable, List
 
@@ -45,5 +46,9 @@ class GenericTools:
                 method_attrs
             ):
                 kernel_functions[name] = method
+
+        logging.info(
+            f"GenericTools.get_all_kernel_functions found {len(kernel_functions)} functions: {list(kernel_functions.keys())}"
+        )
 
         return kernel_functions

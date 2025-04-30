@@ -527,7 +527,7 @@ class PlannerAgent(BaseAgent):
                 session_id=input_task.session_id,
                 user_id=self._user_id,
                 action="Analyze the task: " + input_task.description,
-                agent="GenericAgent",
+                agent=AgentType.GENERIC.value,  # Using the correct value from AgentType enum
                 status=StepStatus.planned,
                 human_approval_status=HumanFeedbackStatus.requested,
                 timestamp=datetime.datetime.utcnow().isoformat(),
@@ -692,8 +692,48 @@ class PlannerAgent(BaseAgent):
         if hasattr(self, "_agent_instances") and self._agent_instances:
             # Process each agent to get their tools
             for agent_name, agent in self._agent_instances.items():
+                # First try to get tools directly from the agent's corresponding tool class
+                tools_dict = None
+                
+                # Try to access plugins property which returns the get_all_kernel_functions result
+                if hasattr(agent, "plugins"):
+                    try:
+                        # Access plugins as a property, not a method
+                        tools_dict = agent.plugins
+                        logging.info(f"Got tools dictionary from {agent_name}'s plugins property")
+                        
+                        # Check if tools_dict is a list or a dictionary
+                        if isinstance(tools_dict, list):
+                            # Convert list to dictionary if needed
+                            tools_dict_converted = {}
+                            for i, func in enumerate(tools_dict):
+                                func_name = getattr(func, "__name__", f"function_{i}")
+                                tools_dict_converted[func_name] = func
+                            tools_dict = tools_dict_converted
+                            logging.info(f"Converted tools list to dictionary for {agent_name}")
+                        
+                    except Exception as e:
+                        logging.warning(f"Error accessing plugins property for {agent_name}: {e}")
+                        
+                # Process tools from tools_dict if available
+                if tools_dict:
+                    for func_name, func in tools_dict.items():
+                        # Check if the function has necessary attributes
+                        if hasattr(func, "__name__") and hasattr(func, "__doc__"):
+                            description = func.__doc__ or f"Function {func_name}"
 
-                if hasattr(agent, "_tools") and agent._tools:
+                            # Create tool entry
+                            tool_entry = {
+                                "agent": agent_name,
+                                "function": func_name,
+                                "description": description,
+                                "arguments": "{}",  # Default empty dict
+                            }
+
+                            tools_list.append(tool_entry)
+
+                # Fall back to the previous approach if no tools_dict found
+                elif hasattr(agent, "_tools") and agent._tools:
                     # Add each tool from this agent
                     for tool in agent._tools:
                         if hasattr(tool, "name") and hasattr(tool, "description"):

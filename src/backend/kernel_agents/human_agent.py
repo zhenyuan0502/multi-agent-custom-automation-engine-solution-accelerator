@@ -87,6 +87,11 @@ class HumanAgent(BaseAgent):
             definition=definition,
         )
 
+    @property
+    def plugins(self):
+        """Get the plugins for the human agent."""
+        return HumanTools.get_all_kernel_functions()
+
     async def handle_human_feedback(self, human_feedback: HumanFeedback) -> str:
         """Handle human feedback on a step.
 

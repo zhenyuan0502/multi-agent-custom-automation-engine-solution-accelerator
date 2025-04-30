@@ -72,3 +72,8 @@ class TechSupportAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @property
+    def plugins(self):
+        """Get the plugins for the tech support agent."""
+        return TechSupportTools.get_all_kernel_functions()

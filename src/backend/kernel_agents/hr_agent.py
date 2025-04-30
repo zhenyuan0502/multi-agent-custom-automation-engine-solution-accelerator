@@ -73,3 +73,8 @@ class HrAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @property
+    def plugins(self):
+        """Get the plugins for the HR agent."""
+        return HrTools.get_all_kernel_functions()

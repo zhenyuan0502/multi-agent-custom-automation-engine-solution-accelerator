@@ -72,3 +72,8 @@ class MarketingAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @property
+    def plugins(self):
+        """Get the plugins for the marketing agent."""
+        return MarketingTools.get_all_kernel_functions()

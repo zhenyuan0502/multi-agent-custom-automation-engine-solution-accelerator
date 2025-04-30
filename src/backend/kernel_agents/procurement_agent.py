@@ -72,3 +72,8 @@ class ProcurementAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @property
+    def plugins(self):
+        """Get the plugins for the procurement agent."""
+        return ProcurementTools.get_all_kernel_functions()
