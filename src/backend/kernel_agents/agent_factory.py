@@ -325,7 +325,7 @@ class AgentFactory:
 
         # Phase 3: Create group chat manager with all agents including the planner
         group_chat_manager = await cls.create_agent(
-            agent_type=group_chat_manager_type,
+            agent_type=AgentType.GROUP_CHAT_MANAGER,
             session_id=session_id,
             user_id=user_id,
             temperature=temperature,
