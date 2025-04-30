@@ -8,6 +8,9 @@ import requests
 
 # Semantic Kernel imports
 import semantic_kernel as sk
+
+# Import AppConfig from app_config
+from app_config import config
 from azure.identity import DefaultAzureCredential
 from context.cosmos_memory_kernel import CosmosMemoryContext
 
