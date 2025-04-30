@@ -3,7 +3,7 @@ from typing import List, Optional
 import semantic_kernel as sk
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from kernel_agents.agent_base import BaseAgent
-from kernel_agents.product_tools import ProductTools
+from src.backend.kernel_tools.product_tools import ProductTools
 from models.messages_kernel import AgentType
 from semantic_kernel.functions import KernelFunction
 
