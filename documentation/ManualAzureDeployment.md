@@ -74,7 +74,7 @@ To add your newly created backend image:
         value: \<Cosmos endpoint>
 
         name: 'COSMOSDB_DATABASE'
-        value: 'autogen'
+        value: 'macae'
 	    Note: To change the default, you will need to create the database in Cosmos
 			  
         name: 'COSMOSDB_CONTAINER'
