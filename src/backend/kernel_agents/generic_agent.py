@@ -41,7 +41,7 @@ class GenericAgent(BaseAgent):
             definition: Optional definition instance
         """
         # Load configuration if tools not provided
-        if tools is None:
+        if not tools:
             # Get tools directly from GenericTools class
             tools_dict = GenericTools.get_all_kernel_functions()
             logging.info(
