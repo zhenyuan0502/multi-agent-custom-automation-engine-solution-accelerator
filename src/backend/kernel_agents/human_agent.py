@@ -180,13 +180,13 @@ class HumanAgent(BaseAgent):
 
         Args:
             human_clarification: The HumanClarification object containing the session_id
-                                and clarification_text provided by the human user
+                                and human_clarification provided by the human user
 
         Returns:
             Status message indicating success or failure of adding the clarification
         """
         session_id = human_clarification.session_id
-        clarification_text = human_clarification.clarification_text
+        clarification_text = human_clarification.human_clarification
 
         # Get the plan associated with this session
         plan = await self._memory_store.get_plan_by_session(session_id)
@@ -198,10 +198,10 @@ class HumanAgent(BaseAgent):
         await self._memory_store.update_plan(plan)
         await self._memory_store.add_item(
             AgentMessage(
-                session_id=human_clarification.session_id,
+                session_id=session_id,
                 user_id=self._user_id,
                 plan_id="",
-                content=f"{human_clarification.human_clarification}",
+                content=f"{clarification_text}",
                 source=AgentType.HUMAN.value,
                 step_id="",
             )
