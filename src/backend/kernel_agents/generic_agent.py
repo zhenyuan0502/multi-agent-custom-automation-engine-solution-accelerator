@@ -7,6 +7,7 @@ from semantic_kernel.functions import KernelFunction
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
+from src.backend.kernel_tools.generic_tools import GenericTools
 
 
 class GenericAgent(BaseAgent):
@@ -41,9 +42,12 @@ class GenericAgent(BaseAgent):
         """
         # Load configuration if tools not provided
         if tools is None:
-            # Load the generic tools configuration
+            # Get tools directly from GenericTools class
+            tools_dict = GenericTools.get_all_kernel_functions()
+            tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
+            
+            # Load the generic tools configuration for system message
             config = self.load_tools_config("generic", config_path)
-            tools = self.get_tools_from_config(kernel, "generic", config_path)
 
             # Use system message from config if not explicitly provided
             if not system_message:

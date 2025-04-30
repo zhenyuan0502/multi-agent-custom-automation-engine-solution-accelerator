@@ -1,11 +1,12 @@
 from typing import List, Optional
 
 import semantic_kernel as sk
-from context.cosmos_memory_kernel import CosmosMemoryContext
-from kernel_agents.agent_base import BaseAgent
-from src.backend.kernel_tools.product_tools import ProductTools
-from models.messages_kernel import AgentType
 from semantic_kernel.functions import KernelFunction
+
+from kernel_agents.agent_base import BaseAgent
+from context.cosmos_memory_kernel import CosmosMemoryContext
+from models.messages_kernel import AgentType
+from src.backend.kernel_tools.product_tools import ProductTools
 
 
 class ProductAgent(BaseAgent):
@@ -46,9 +47,12 @@ class ProductAgent(BaseAgent):
         """
         # Load configuration if tools not provided
         if tools is None:
-            # Load the product tools configuration
+            # Get tools directly from ProductTools class
+            tools_dict = ProductTools.get_all_kernel_functions()
+            tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
+
+            # Load the product tools configuration for system message
             config = self.load_tools_config("product", config_path)
-            tools = self.get_tools_from_config(kernel, "product", config_path)
 
             # Use system message from config if not explicitly provided
             if not system_message:
@@ -74,9 +78,8 @@ class ProductAgent(BaseAgent):
 
     @property
     def plugins(self):
-        """Get the plugins for the syntax checker agent."""
+        """Get the plugins for the product agent."""
         return ProductTools.get_all_kernel_functions()
-        # return ["marketing_functions", ProductTools()]
 
     # Explicitly inherit handle_action_request from the parent class
     # This is not technically necessary but makes the inheritance explicit

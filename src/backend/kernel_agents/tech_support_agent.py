@@ -6,14 +6,13 @@ from semantic_kernel.functions import KernelFunction
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
+from src.backend.kernel_tools.tech_support_tools import TechSupportTools
 
 
 class TechSupportAgent(BaseAgent):
     """Tech Support agent implementation using Semantic Kernel.
 
-    This agent specializes in IT troubleshooting, system administration, network issues,
-    software installation, and general technical support. It can help with setting up software,
-    accounts, devices, and other IT-related tasks.
+    This agent specializes in technical support, IT administration, and equipment setup.
     """
 
     def __init__(
@@ -39,21 +38,24 @@ class TechSupportAgent(BaseAgent):
             tools: List of tools available to this agent (optional)
             system_message: Optional system message for the agent
             agent_name: Optional name for the agent (defaults to "TechSupportAgent")
-            config_path: Optional path to the tech support tools configuration file
+            config_path: Optional path to the Tech Support tools configuration file
             client: Optional client instance
             definition: Optional definition instance
         """
         # Load configuration if tools not provided
         if tools is None:
-            # Load the tech support tools configuration
+            # Get tools directly from TechSupportTools class
+            tools_dict = TechSupportTools.get_all_kernel_functions()
+            tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
+
+            # Load the tech support tools configuration for system message
             config = self.load_tools_config("tech_support", config_path)
-            tools = self.get_tools_from_config(kernel, "tech_support", config_path)
 
             # Use system message from config if not explicitly provided
             if not system_message:
                 system_message = config.get(
                     "system_message",
-                    "You are an AI Agent who is knowledgeable about Information Technology. You are able to help with setting up software, accounts, devices, and other IT-related tasks. If you need additional information from the human user asking the question in order to complete a request, ask before calling a function.",
+                    "You are a Tech Support agent. You can assist with technical issues, IT administration, equipment setup, and software/hardware troubleshooting. When asked to call a function, you should summarize back what was done.",
                 )
 
             # Use agent name from config if available
