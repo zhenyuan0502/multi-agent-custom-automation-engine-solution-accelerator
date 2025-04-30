@@ -7,6 +7,7 @@ from semantic_kernel.functions import KernelFunction
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
+from src.backend.kernel_tools.generic_tools import GenericTools
 
 
 class GenericAgent(BaseAgent):
@@ -41,9 +42,19 @@ class GenericAgent(BaseAgent):
         """
         # Load configuration if tools not provided
         if tools is None:
-            # Load the generic tools configuration
+            # Get tools directly from GenericTools class
+            tools_dict = GenericTools.get_all_kernel_functions()
+            logging.info(
+                f"GenericAgent: Got tools_dict with {len(tools_dict)} functions: {list(tools_dict.keys())}"
+            )
+
+            tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
+            logging.info(
+                f"GenericAgent: Created {len(tools)} KernelFunctions from tools_dict"
+            )
+
+            # Load the generic tools configuration for system message
             config = self.load_tools_config("generic", config_path)
-            tools = self.get_tools_from_config(kernel, "generic", config_path)
 
             # Use system message from config if not explicitly provided
             if not system_message:
@@ -70,8 +81,12 @@ class GenericAgent(BaseAgent):
             definition=definition,
         )
 
+    @property
+    def plugins(self):
+        """Get the plugins for the generic agent."""
+        return GenericTools.get_all_kernel_functions()
+
     # Explicitly inherit handle_action_request from the parent class
-    # This is not technically necessary but makes the inheritance explicit
     async def handle_action_request(self, action_request_json: str) -> str:
         """Handle an action request from another agent or the system.
 

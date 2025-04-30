@@ -192,17 +192,14 @@ class AgentFactory:
             # Create the agent definition using the AIProjectClient (project-based pattern)
             # For GroupChatManager, create a definition with minimal configuration
             if client is not None:
-                try:
-                    definition = await client.agents.get_agent(agent_type_str)
 
-                except Exception as get_agent_exc:
-                    definition = await client.agents.create_agent(
-                        model=config.AZURE_OPENAI_DEPLOYMENT_NAME,
-                        name=agent_type_str,
-                        instructions=system_message,
-                        temperature=temperature,
-                        response_format=response_format,  # Add response_format if required
-                    )
+                definition = await client.agents.create_agent(
+                    model=config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                    name=agent_type_str,
+                    instructions=system_message,
+                    temperature=temperature,
+                    response_format=response_format,  # Add response_format if required
+                )
                 logger.info(
                     f"Successfully created agent definition for {agent_type_str}"
                 )
@@ -242,14 +239,7 @@ class AgentFactory:
             ):
                 init_result = await agent.async_init()
                 logger.info(f"[DEBUG] Result of agent.async_init(): {init_result}")
-            # Register tools with Azure AI Agent for LLM function calls
-            if (
-                hasattr(agent, "_agent")
-                and hasattr(agent._agent, "add_function")
-                and tools
-            ):
-                for fn in tools:
-                    agent._agent.add_function(fn)
+
         except Exception as e:
             logger.error(
                 f"Error creating agent of type {agent_type} with parameters: {e}"
@@ -292,37 +282,7 @@ class AgentFactory:
             return []
         except Exception as e:
             logger.warning(f"Error loading tools for {agent_type}: {e}")
-
-            # For other agent types, try to create a simple fallback tool
-            try:
-                # Use PromptTemplateConfig to create a simple tool
-
-                # Simple minimal prompt
-                prompt = f"""You are a helpful assistant specialized in {agent_type} tasks. User query: {{$input}} Provide a helpful response."""
-
-                # Create a prompt template config
-                prompt_config = PromptTemplateConfig(
-                    template=prompt,
-                    name=f"{agent_type}_help_with_tasks",
-                    description=f"A helper function for {agent_type} tasks",
-                )
-
-                # Create the function using the prompt_config with explicit plugin_name
-                function = KernelFunction.from_prompt(
-                    function_name=f"{agent_type}_help_with_tasks",
-                    plugin_name=f"{agent_type}_fallback_plugin",
-                    description=f"A helper function for {agent_type} tasks",
-                    prompt_template_config=prompt_config,
-                )
-
-                logger.info(f"Created fallback tool for {agent_type}")
-                return [function]
-            except Exception as fallback_error:
-                logger.error(
-                    f"Failed to create fallback tool for {agent_type}: {fallback_error}"
-                )
-                # Return an empty list if everything fails - the agent can still function without tools
-                return []
+            return []
 
     @classmethod
     async def create_all_agents(

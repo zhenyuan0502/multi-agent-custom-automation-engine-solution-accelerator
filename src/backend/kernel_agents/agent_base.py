@@ -1,18 +1,19 @@
-import logging
 import json
+import logging
 import os
-from typing import Any, Dict, List, Mapping, Optional, Callable, Awaitable
+from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional, Union
 
 import semantic_kernel as sk
-from semantic_kernel.functions import KernelFunction
-from semantic_kernel.functions.kernel_function_decorator import kernel_function
-from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
+from semantic_kernel.functions import KernelFunction
+from semantic_kernel.functions.kernel_arguments import KernelArguments
+from semantic_kernel.functions.kernel_function_decorator import kernel_function
+from semantic_kernel.agents import AzureAIAgentThread
 
 # Updated imports for compatibility
 try:
     # Try importing from newer structure first
-    from semantic_kernel.contents import ChatMessageContent, ChatHistory
+    from semantic_kernel.contents import ChatHistory, ChatMessageContent
 except ImportError:
     # Fall back to older structure for compatibility
     class ChatMessageContent:
@@ -30,7 +31,10 @@ except ImportError:
             self.messages = []
 
 
+# Import the new AppConfig instance
+from app_config import config
 from context.cosmos_memory_kernel import CosmosMemoryContext
+from event_utils import track_event_if_configured
 from models.messages_kernel import (
     ActionRequest,
     ActionResponse,
@@ -38,10 +42,6 @@ from models.messages_kernel import (
     Step,
     StepStatus,
 )
-
-# Import the new AppConfig instance
-from app_config import config
-from event_utils import track_event_if_configured
 
 # Default formatting instructions used across agents
 DEFAULT_FORMATTING_INSTRUCTIONS = "Instructions: returning the output of this function call verbatim to the user in markdown. Then write AGENT SUMMARY: and then include a summary of what you did."
@@ -77,6 +77,8 @@ class BaseAgent(AzureAIAgent):
             client: The client required by AzureAIAgent
             definition: The definition required by AzureAIAgent
         """
+        # Add plugins if not already set
+        # if not self.plugins:
         # If agent_type is provided, load tools from config automatically
         if agent_type and not tools:
             tools = self.get_tools_from_config(kernel, agent_type)
@@ -94,6 +96,7 @@ class BaseAgent(AzureAIAgent):
         super().__init__(
             kernel=kernel,
             deployment_name=None,  # Set as needed
+            plugins=tools,  # Use the loaded plugins,
             endpoint=None,  # Set as needed
             api_version=None,  # Set as needed
             token=None,  # Set as needed
@@ -117,8 +120,14 @@ class BaseAgent(AzureAIAgent):
         # Required properties for AgentGroupChat compatibility
         self.name = agent_name  # This is crucial for AgentGroupChat to identify agents
 
-        # Register the handler functions
-        self._register_functions()
+    # @property
+    # def plugins(self) -> Optional[dict[str, Callable]]:
+    #     """Get the plugins for this agent.
+
+    #     Returns:
+    #         A list of plugins, or None if not applicable.
+    #     """
+    #     return None
 
     def _default_system_message(self, agent_name=None) -> str:
         name = agent_name or getattr(self, "_agent_name", "Agent")
@@ -129,36 +138,16 @@ class BaseAgent(AzureAIAgent):
 
         This method must be called after creating the agent to complete initialization.
         """
+        logging.info(f"Initializing agent: {self._agent_name}")
         # Create Azure AI Agent or fallback
         self._agent = await config.create_azure_ai_agent(
             kernel=self._kernel,
             agent_name=self._agent_name,
             instructions=self._system_message,
+            tools=self._tools,
         )
         # Tools are registered with the kernel via get_tools_from_config
         return self
-
-    def _register_functions(self):
-        """Register this agent's functions with the kernel."""
-        # Use the kernel function decorator approach instead of from_native_method
-        # which isn't available in SK 1.28.0
-        function_name = "handle_action_request"
-
-        # Define the function using the kernel function decorator
-        @kernel_function(
-            description="Handle an action request from another agent or the system",
-            name=function_name,
-        )
-        async def handle_action_request_wrapper(*args, **kwargs):
-            # Forward to the instance method
-            return await self.handle_action_request(*args, **kwargs)
-
-        # Wrap the decorated function into a KernelFunction and register under this agent's plugin
-        kernel_func = KernelFunction.from_method(handle_action_request_wrapper)
-        # Use agent name as plugin for handler
-        self._kernel.add_function(self._agent_name, kernel_func)
-
-    # Required method for AgentGroupChat compatibility
 
     async def handle_action_request(self, action_request: ActionRequest) -> str:
         """Handle an action request from another agent or the system.
@@ -201,8 +190,13 @@ class BaseAgent(AzureAIAgent):
             # chat_history = self._chat_history.copy()
 
             # Call the agent to handle the action
+            thread = None
+            # thread = self.client.agents.get_thread(
+            #     thread=step.session_id
+            # )  # AzureAIAgentThread(thread_id=step.session_id)
             async_generator = self._agent.invoke(
-                f"{action_request.action}\n\nPlease perform this action"
+                messages=f"{action_request.action}\n\nPlease perform this action",
+                thread=thread,
             )
 
             response_content = ""
@@ -299,73 +293,11 @@ class BaseAgent(AzureAIAgent):
 
         return response.json()
 
-    async def invoke_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
-        """Invoke a specific tool by name with the provided arguments.
-
-        Args:
-            tool_name: The name of the tool to invoke
-            arguments: A dictionary of arguments to pass to the tool
-
-        Returns:
-            The result of the tool invocation as a string
-
-        Raises:
-            ValueError: If the tool is not found
-        """
-        # Find the tool by name in the agent's tools list
-        tool = next((t for t in self._tools if t.name == tool_name), None)
-
-        if not tool:
-            # Try looking up the tool in the kernel's plugins
-            plugin_name = f"{self._agent_name.lower().replace('agent', '')}_plugin"
-            try:
-                tool = self._kernel.get_function(plugin_name, tool_name)
-            except Exception:
-                raise ValueError(
-                    f"Tool '{tool_name}' not found in agent tools or kernel plugins"
-                )
-
-        if not tool:
-            raise ValueError(f"Tool '{tool_name}' not found")
-
-        try:
-            # Create kernel arguments from the dictionary
-            kernel_args = KernelArguments()
-            for key, value in arguments.items():
-                kernel_args[key] = value
-
-            # Invoke the tool
-            logging.info(f"Invoking tool '{tool_name}' with arguments: {arguments}")
-
-            # Use invoke_with_args_dict directly instead of relying on KernelArguments
-            if hasattr(tool, "invoke_with_args_dict") and callable(
-                tool.invoke_with_args_dict
-            ):
-                result = await tool.invoke_with_args_dict(arguments)
-            else:
-                # Fall back to standard invoke method
-                result = await tool.invoke(kernel_args)
-
-            # Log telemetry if configured
-            track_event_if_configured(
-                "AgentToolInvocation",
-                {
-                    "agent_name": self._agent_name,
-                    "tool_name": tool_name,
-                    "session_id": self._session_id,
-                    "user_id": self._user_id,
-                },
-            )
-
-            return str(result)
-        except Exception as e:
-            logging.error(f"Error invoking tool '{tool_name}': {str(e)}")
-            raise
-
     @staticmethod
     def create_dynamic_function(
         name: str,
         response_template: str,
+        description: Optional[str] = None,
         formatting_instr: str = DEFAULT_FORMATTING_INSTRUCTIONS,
     ) -> Callable[..., Awaitable[str]]:
         """Create a dynamic function for agent tools based on the name and template.
@@ -378,6 +310,13 @@ class BaseAgent(AzureAIAgent):
         Returns:
             A dynamic async function that can be registered with the semantic kernel
         """
+
+        # Truncate function name to 64 characters if it exceeds the limit
+        if len(name) > 64:
+            logging.warning(
+                f"Function name '{name}' exceeds 64 characters (length: {len(name)}). Truncating to 64 characters."
+            )
+            name = name[:64]
 
         async def dynamic_function(**kwargs) -> str:
             try:
@@ -396,7 +335,9 @@ class BaseAgent(AzureAIAgent):
         dynamic_function.__name__ = name
 
         # Create a wrapped kernel function that matches the expected signature
-        @kernel_function(description=f"Dynamic function: {name}", name=name)
+        logging.info(f"Creating dynamic function: {name} {len(name)}")
+
+        @kernel_function(description=f"Dynamic function {name}", name=name)
         async def kernel_wrapper(
             kernel_arguments: KernelArguments = None, **kwargs
         ) -> str:
@@ -477,7 +418,7 @@ class BaseAgent(AzureAIAgent):
         plugin_name = f"{agent_type}_plugin"
 
         # Early return if no tools defined - prevent empty iteration
-        if not config.get("tools"):
+        if not config.get("tools"):  # or agent_type == "Product_Agent":
             logging.info(
                 f"No tools defined for agent type '{agent_type}'. Returning empty list."
             )
@@ -513,7 +454,7 @@ class BaseAgent(AzureAIAgent):
                         )
 
                 # Register the function with the kernel
-                kernel.add_function(plugin_name, kernel_func)
+
                 kernel_functions.append(kernel_func)
                 logging.info(
                     f"Successfully created dynamic tool '{function_name}' for {agent_type}"

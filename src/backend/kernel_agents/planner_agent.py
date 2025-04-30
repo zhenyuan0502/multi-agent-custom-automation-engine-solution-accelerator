@@ -12,7 +12,11 @@ from azure.ai.projects.models import (
 import semantic_kernel as sk
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.functions.kernel_arguments import KernelArguments
-
+from semantic_kernel.agents import (
+    AzureAIAgent,
+    AzureAIAgentSettings,
+    AzureAIAgentThread,
+)
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import (
@@ -319,12 +323,18 @@ class PlannerAgent(BaseAgent):
 
             # Ensure we're using the right pattern for Azure AI agents with semantic kernel
             # Properly handle async generation
+            # thread = AzureAIAgentThread(
+            #     thread_id=input_task.session_id, client=self.client
+            # )
+            thread = None
+            # thread = self.client.agents.create_thread(thread_id=input_task.session_id)
             async_generator = self._azure_ai_agent.invoke(
                 arguments=kernel_args,
                 settings={
                     "temperature": 0.0,  # Keep temperature low for consistent planning
                     "max_tokens": 10096,  # Ensure we have enough tokens for the full plan
                 },
+                thread=thread,
             )
 
             # Call invoke with proper keyword arguments and JSON response schema
@@ -517,7 +527,7 @@ class PlannerAgent(BaseAgent):
                 session_id=input_task.session_id,
                 user_id=self._user_id,
                 action="Analyze the task: " + input_task.description,
-                agent="GenericAgent",
+                agent=AgentType.GENERIC.value,  # Using the correct value from AgentType enum
                 status=StepStatus.planned,
                 human_approval_status=HumanFeedbackStatus.requested,
                 timestamp=datetime.datetime.utcnow().isoformat(),
@@ -682,8 +692,48 @@ class PlannerAgent(BaseAgent):
         if hasattr(self, "_agent_instances") and self._agent_instances:
             # Process each agent to get their tools
             for agent_name, agent in self._agent_instances.items():
+                # First try to get tools directly from the agent's corresponding tool class
+                tools_dict = None
+                
+                # Try to access plugins property which returns the get_all_kernel_functions result
+                if hasattr(agent, "plugins"):
+                    try:
+                        # Access plugins as a property, not a method
+                        tools_dict = agent.plugins
+                        logging.info(f"Got tools dictionary from {agent_name}'s plugins property")
+                        
+                        # Check if tools_dict is a list or a dictionary
+                        if isinstance(tools_dict, list):
+                            # Convert list to dictionary if needed
+                            tools_dict_converted = {}
+                            for i, func in enumerate(tools_dict):
+                                func_name = getattr(func, "__name__", f"function_{i}")
+                                tools_dict_converted[func_name] = func
+                            tools_dict = tools_dict_converted
+                            logging.info(f"Converted tools list to dictionary for {agent_name}")
+                        
+                    except Exception as e:
+                        logging.warning(f"Error accessing plugins property for {agent_name}: {e}")
+                        
+                # Process tools from tools_dict if available
+                if tools_dict:
+                    for func_name, func in tools_dict.items():
+                        # Check if the function has necessary attributes
+                        if hasattr(func, "__name__") and hasattr(func, "__doc__"):
+                            description = func.__doc__ or f"Function {func_name}"
 
-                if hasattr(agent, "_tools") and agent._tools:
+                            # Create tool entry
+                            tool_entry = {
+                                "agent": agent_name,
+                                "function": func_name,
+                                "description": description,
+                                "arguments": "{}",  # Default empty dict
+                            }
+
+                            tools_list.append(tool_entry)
+
+                # Fall back to the previous approach if no tools_dict found
+                elif hasattr(agent, "_tools") and agent._tools:
                     # Add each tool from this agent
                     for tool in agent._tools:
                         if hasattr(tool, "name") and hasattr(tool, "description"):
@@ -815,50 +865,46 @@ class PlannerAgent(BaseAgent):
         # Build the instruction with proper format placeholders for .format() method
 
         instruction_template = """
-        You are the Planner, an AI orchestrator that manages a group of AI agents to accomplish tasks.
+            You are the Planner, an AI orchestrator that manages a group of AI agents to accomplish tasks.
 
-                For the given objective, come up with a simple step-by-step plan.
-                This plan should involve individual tasks that, if executed correctly, will yield the correct answer. Do not add any superfluous steps.
-                The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
+            For the given objective, come up with a simple step-by-step plan.
+            This plan should involve individual tasks that, if executed correctly, will yield the correct answer. Do not add any superfluous steps.
+            The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
 
-                These actions are passed to the specific agent. Make sure the action contains all the information required for the agent to execute the task.
-                
-                Your objective is:
-                {{$objective}}
+            These actions are passed to the specific agent. Make sure the action contains all the information required for the agent to execute the task.
 
-                The agents you have access to are:
-                {{$agents_str}}
+            Your objective is:
+            {{$objective}}
 
-                These agents have access to the following functions:
-                {{$tools_str}}
+            The agents you have access to are:
+            {{$agents_str}}
 
-                IMPORTANT AGENT SELECTION GUIDANCE:
-                - HrAgent: ALWAYS use for ALL employee-related tasks like onboarding, hiring, benefits, payroll, training, employee records, ID cards, mentoring, background checks, etc.
-                - MarketingAgent: Use for marketing campaigns, branding, market research, content creation, social media, etc.
-                - ProcurementAgent: Use for purchasing, vendor management, supply chain, asset management, etc.
-                - ProductAgent: Use for product development, roadmaps, features, product feedback, etc.
-                - TechSupportAgent: Use for technical issues, software/hardware setup, troubleshooting, IT support, etc.
-                - GenericAgent: Use only for general knowledge tasks that don't fit other categories
-                - HumanAgent: Use only when human input is absolutely required and no other agent can handle the task
+            These agents have access to the following functions:
+            {{$tools_str}}
 
-                The first step of your plan should be to ask the user for any additional information required to progress the rest of steps planned.
+            The first step of your plan should be to ask the user for any additional information required to progress the rest of steps planned.
 
-                Only use the functions provided as part of your plan. If the task is not possible with the agents and tools provided, create a step with the agent of type Exception and mark the overall status as completed.
+            Only use the functions provided as part of your plan. If the task is not possible with the agents and tools provided, create a step with the agent of type Exception and mark the overall status as completed.
 
-                Do not add superfluous steps - only take the most direct path to the solution, with the minimum number of steps. Only do the minimum necessary to complete the goal.
+            Do not add superfluous steps - only take the most direct path to the solution, with the minimum number of steps. Only do the minimum necessary to complete the goal.
 
-                If there is a single function call that can directly solve the task, only generate a plan with a single step. For example, if someone asks to be granted access to a database, generate a plan with only one step involving the grant_database_access function, with no additional steps.
+            If there is a single function call that can directly solve the task, only generate a plan with a single step. For example, if someone asks to be granted access to a database, generate a plan with only one step involving the grant_database_access function, with no additional steps.
 
-                You must prioritize using the provided functions to accomplish each step. First evaluate each and every function the agents have access too. Only if you cannot find a function needed to complete the task, and you have reviewed each and every function, and determined why each are not suitable, there are two options you can take when generating the plan.
-                First evaluate whether the step could be handled by a typical large language model, without any specialized functions. For example, tasks such as "add 32 to 54", or "convert this SQL code to a python script", or "write a 200 word story about a fictional product strategy".
+            When generating the action in the plan, frame the action as an instruction you are passing to the agent to execute. It should be a short, single sentence. Include the function to use. For example, "Set up an Office 365 Account for Jessica Smith. Function: set_up_office_365_account"
 
-                If a general Large Language Model CAN handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: No suitable function found. A generic LLM model is being used for this step." to the end of the action. Assign these steps to the GenericAgent. For example, if the task is to convert the following SQL into python code (SELECT * FROM employees;), and there is no function to convert SQL to python, write a step with the action "convert the following SQL into python code (SELECT * FROM employees;) EXCEPTION: No suitable function found. A generic LLM model is being used for this step." and assign it to the GenericAgent.
+            Ensure the summary of the plan and the overall steps is less than 50 words.
 
-                Alternatively, if a general Large Language Model CAN NOT handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: Human support required to do this step, no suitable function found." to the end of the action. Assign these steps to the HumanAgent. For example, if the task is to find the best way to get from A to B, and there is no function to calculate the best route, write a step with the action "Calculate the best route from A to B. EXCEPTION: Human support required, no suitable function found." and assign it to the HumanAgent.
+            Identify any additional information that might be required to complete the task. Include this information in the plan in the human_clarification_request field of the plan. If it is not required, leave it as null. Do not include information that you are waiting for clarification on in the string of the action field, as this otherwise won't get updated.
 
-                Limit the plan to 6 steps or less.
+            You must prioritise using the provided functions to accomplish each step. First evaluate each and every function the agents have access too. Only if you cannot find a function needed to complete the task, and you have reviewed each and every function, and determined why each are not suitable, there are two options you can take when generating the plan.
+            First evaluate whether the step could be handled by a typical large language model, without any specialised functions. For example, tasks such as "add 32 to 54", or "convert this SQL code to a python script", or "write a 200 word story about a fictional product strategy".
+            If a general Large Language Model CAN handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: No suitable function found. A generic LLM model is being used for this step." to the end of the action. Assign these steps to the GenericAgent. For example, if the task is to convert the following SQL into python code (SELECT * FROM employees;), and there is no function to convert SQL to python, write a step with the action "convert the following SQL into python code (SELECT * FROM employees;) EXCEPTION: No suitable function found. A generic LLM model is being used for this step." and assign it to the GenericAgent.
+            Alternatively, if a general Large Language Model CAN NOT handle the step/required action, add a step to the plan with the action you believe would be needed, and add "EXCEPTION: Human support required to do this step, no suitable function found." to the end of the action. Assign these steps to the HumanAgent. For example, if the task is to find the best way to get from A to B, and there is no function to calculate the best route, write a step with the action "Calculate the best route from A to B. EXCEPTION: Human support required, no suitable function found." and assign it to the HumanAgent.
 
-                Choose from {{$agents_str}} ONLY for planning your steps.
 
-                """
+            Limit the plan to 6 steps or less.
+
+            Choose from {{$agents_str}} ONLY for planning your steps.
+
+            """
         return instruction_template

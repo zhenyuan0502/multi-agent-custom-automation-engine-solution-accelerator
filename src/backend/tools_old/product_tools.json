@@ -25,7 +25,7 @@
       "name": "get_product_info",
       "description": "Get information about available products and phone plans.",
       "parameters": [],
-      "response_template": "Here is the requested product information with details on available plans and services."
+      "response_template": "Here is information to relay back to the user. Repeat back all the relevant sections that the user asked for: # Simulated Phone Plans\n\n\n\n    ## Plan A: Basic Saver\n\n    - **Monthly Cost**: $25\n\n    - **Data**: 5GB\n\n    - **Calls**: Unlimited local calls\n\n    - **Texts**: Unlimited local texts\n\n\n\n    ## Plan B: Standard Plus\n\n    - **Monthly Cost**: $45\n\n    - **Data**: 15GB\n\n    - **Calls**: Unlimited local and national calls\n\n    - **Texts**: Unlimited local and national texts\n\n\n\n    ## Plan C: Premium Unlimited\n\n    - **Monthly Cost**: $70\n\n    - **Data**: Unlimited\n\n    - **Calls**: Unlimited local, national, and international calls\n\n    - **Texts**: Unlimited local, national, and international texts\n\n\n\n    # Roaming Extras Add-On Pack\n\n    - **Cost**: $15/month\n\n    - **Data**: 1GB\n\n    - **Calls**: 200 minutes\n\n    - **Texts**: 200 texts\n\n\n."
     },
     {
       "name": "get_billing_date",

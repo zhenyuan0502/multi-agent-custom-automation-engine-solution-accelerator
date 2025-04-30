@@ -6,15 +6,13 @@ from semantic_kernel.functions import KernelFunction
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
+from src.backend.kernel_tools.marketing_tools import MarketingTools
 
 
 class MarketingAgent(BaseAgent):
     """Marketing agent implementation using Semantic Kernel.
 
-    This agent specializes in marketing strategies, campaign development,
-    content creation, and market analysis. It can create effective marketing
-    campaigns, analyze market trends, develop promotional content, and more.
-    All tools are loaded from marketing_tools.json.
+    This agent specializes in marketing, campaign management, and analyzing market data.
     """
 
     def __init__(
@@ -46,9 +44,12 @@ class MarketingAgent(BaseAgent):
         """
         # Load configuration if tools not provided
         if tools is None:
-            # Load the marketing tools configuration
+            # Get tools directly from MarketingTools class
+            tools_dict = MarketingTools.get_all_kernel_functions()
+            tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
+
+            # Load the marketing tools configuration for system message
             config = self.load_tools_config("marketing", config_path)
-            tools = self.get_tools_from_config(kernel, "marketing", config_path)
 
             # Use system message from config if not explicitly provided
             if not system_message:
@@ -71,3 +72,8 @@ class MarketingAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @property
+    def plugins(self):
+        """Get the plugins for the marketing agent."""
+        return MarketingTools.get_all_kernel_functions()

@@ -6,13 +6,14 @@ from semantic_kernel.functions import KernelFunction
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
+from src.backend.kernel_tools.hr_tools import HrTools
 
 
 class HrAgent(BaseAgent):
     """HR agent implementation using Semantic Kernel.
 
     This agent provides HR-related functions such as onboarding, benefits management,
-    and employee administration. All tools are loaded from hr_tools.json.
+    and employee administration.
     """
 
     def __init__(
@@ -44,9 +45,12 @@ class HrAgent(BaseAgent):
         """
         # Load configuration if tools not provided
         if tools is None:
-            # Load the HR tools configuration
+            # Get tools directly from HrTools class
+            tools_dict = HrTools.get_all_kernel_functions()
+            tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
+
+            # Load the HR tools configuration for system message
             config = self.load_tools_config("hr", config_path)
-            tools = self.get_tools_from_config(kernel, "hr", config_path)
 
             # Use system message from config if not explicitly provided
             if not system_message:
@@ -69,3 +73,8 @@ class HrAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @property
+    def plugins(self):
+        """Get the plugins for the HR agent."""
+        return HrTools.get_all_kernel_functions()
