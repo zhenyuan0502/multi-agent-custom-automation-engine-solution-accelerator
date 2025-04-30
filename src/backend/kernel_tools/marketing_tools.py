@@ -23,7 +23,7 @@ class MarketingTools:
 
     @staticmethod
     @kernel_function(description="Generate social media posts for a campaign.")
-    async def generate_social_media_posts(campaign_name: str, platforms: list) -> str:
+    async def generate_social_posts(campaign_name: str, platforms: list) -> str:
         platforms_str = ", ".join(platforms)
         return f"Social media posts for campaign '{campaign_name}' generated for platforms: {platforms_str}."
 
@@ -43,12 +43,6 @@ class MarketingTools:
     @kernel_function(description="Perform a competitor analysis.")
     async def perform_competitor_analysis(competitor_name: str) -> str:
         return f"Competitor analysis performed on '{competitor_name}'."
-
-    @staticmethod
-    @kernel_function(description="Optimize SEO strategy using specified keywords.")
-    async def optimize_seo_strategy(keywords: list) -> str:
-        keywords_str = ", ".join(keywords)
-        return f"SEO strategy optimized with keywords: {keywords_str}."
 
     @staticmethod
     @kernel_function(description="Schedule a marketing event.")
@@ -211,7 +205,7 @@ class MarketingTools:
 
     @staticmethod
     @kernel_function(description="Manage a customer retention program.")
-    async def manage_customer_retention_program(program_name: str) -> str:
+    async def manage_retention_program(program_name: str) -> str:
         return f"Customer retention program '{program_name}' managed."
 
     @staticmethod
@@ -261,7 +255,7 @@ class MarketingTools:
 
     @staticmethod
     @kernel_function(description="Run an influencer marketing campaign.")
-    async def run_influencer_marketing_campaign(
+    async def run_influencer_campaign(
         campaign_name: str, influencers: list
     ) -> str:
         influencers_str = ", ".join(influencers)
@@ -280,7 +274,7 @@ class MarketingTools:
     # This function does NOT have the kernel_function annotation
     # because it's meant for introspection rather than being exposed as a tool
     @staticmethod
-    def get_all_kernel_functions() -> List[Callable]:
+    def get_all_kernel_functions() -> dict[str, Callable]:
         """
         Returns a dictionary of all methods in this class that have the @kernel_function annotation.
         This function itself is not annotated with @kernel_function.
@@ -288,7 +282,7 @@ class MarketingTools:
         Returns:
             Dict[str, Callable]: Dictionary with function names as keys and function objects as values
         """
-        kernel_functions = []
+        kernel_functions = {}
 
         # Get all class methods
         for name, method in inspect.getmembers(
@@ -304,6 +298,6 @@ class MarketingTools:
             if hasattr(method, "__kernel_function__") or "kernel_function" in str(
                 method_attrs
             ):
-                kernel_functions.append(method)
+                kernel_functions[name] = method
 
         return kernel_functions

@@ -271,7 +271,7 @@ class HrTools:
 
     @staticmethod
     @kernel_function(description="Organize a health and wellness program.")
-    async def organize_health_and_wellness_program(program_name: str, date: str) -> str:
+    async def organize_wellness_program(program_name: str, date: str) -> str:
         return (
             f"##### Health and Wellness Program Organized\n"
             f"**Program Name:** {program_name}\n"

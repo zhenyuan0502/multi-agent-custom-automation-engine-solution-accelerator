@@ -55,7 +55,7 @@ class HumanAgent(BaseAgent):
             definition: Optional definition instance
         """
         # Load configuration if tools not provided
-        if tools is None:
+        if not tools:
             # Get tools directly from HumanTools class
             tools_dict = HumanTools.get_all_kernel_functions()
             tools = [KernelFunction.from_method(func) for func in tools_dict.values()]

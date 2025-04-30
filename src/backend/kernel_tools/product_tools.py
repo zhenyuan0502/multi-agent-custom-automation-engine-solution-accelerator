@@ -452,7 +452,7 @@ class ProductTools:
 
     @staticmethod
     @kernel_function(description="Develop training materials for a specified product.")
-    async def develop_product_training_material(
+    async def create_training_material(
         product_name: str, training_material: str
     ) -> str:
         """Develop training material for a specific product."""

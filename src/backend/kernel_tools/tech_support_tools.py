@@ -117,9 +117,9 @@ class TechSupportTools:
 
     @staticmethod
     @kernel_function(
-        description="Assist procurement with technical specifications of equipment."
+        description="support procurement with technical specifications of equipment."
     )
-    async def assist_procurement_with_tech_equipment(equipment_details: str) -> str:
+    async def support_procurement_tech (equipment_details: str) -> str:
         return (
             f"##### Technical Specifications Provided\n"
             f"**Equipment Details:** {equipment_details}\n\n"
@@ -129,7 +129,7 @@ class TechSupportTools:
 
     @staticmethod
     @kernel_function(description="Collaborate with CodeAgent for code deployment.")
-    async def collaborate_with_code_deployment(project_name: str) -> str:
+    async def collaborate_code_deployment(project_name: str) -> str:
         return (
             f"##### Code Deployment Collaboration\n"
             f"**Project Name:** {project_name}\n\n"
@@ -139,7 +139,7 @@ class TechSupportTools:
 
     @staticmethod
     @kernel_function(description="Provide technical support for a marketing campaign.")
-    async def provide_tech_support_for_marketing(campaign_name: str) -> str:
+    async def assist_marketing_tech(campaign_name: str) -> str:
         return (
             f"##### Tech Support for Marketing Campaign\n"
             f"**Campaign Name:** {campaign_name}\n\n"

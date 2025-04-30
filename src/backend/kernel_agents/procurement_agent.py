@@ -43,7 +43,7 @@ class ProcurementAgent(BaseAgent):
             definition: Optional definition instance
         """
         # Load configuration if tools not provided
-        if tools is None:
+        if not tools:
             # Get tools directly from ProcurementTools class
             tools_dict = ProcurementTools.get_all_kernel_functions()
             tools = [KernelFunction.from_method(func) for func in tools_dict.values()]

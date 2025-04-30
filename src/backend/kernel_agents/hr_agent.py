@@ -44,7 +44,7 @@ class HrAgent(BaseAgent):
             definition: Optional definition instance
         """
         # Load configuration if tools not provided
-        if tools is None:
+        if not tools:
             # Get tools directly from HrTools class
             tools_dict = HrTools.get_all_kernel_functions()
             tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
