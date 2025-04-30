@@ -8,6 +8,7 @@ from semantic_kernel.agents.azure_ai.azure_ai_agent import AzureAIAgent
 from semantic_kernel.functions import KernelFunction
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.functions.kernel_function_decorator import kernel_function
+from semantic_kernel.agents import AzureAIAgentThread
 
 # Updated imports for compatibility
 try:
@@ -189,8 +190,10 @@ class BaseAgent(AzureAIAgent):
             # chat_history = self._chat_history.copy()
 
             # Call the agent to handle the action
-            # thread = self.client.agents.create_thread(thread_id=step.session_id)
             thread = None
+            # thread = self.client.agents.get_thread(
+            #     thread=step.session_id
+            # )  # AzureAIAgentThread(thread_id=step.session_id)
             async_generator = self._agent.invoke(
                 messages=f"{action_request.action}\n\nPlease perform this action",
                 thread=thread,
@@ -451,7 +454,7 @@ class BaseAgent(AzureAIAgent):
                         )
 
                 # Register the function with the kernel
-                kernel.add_function(plugin_name, kernel_func)
+
                 kernel_functions.append(kernel_func)
                 logging.info(
                     f"Successfully created dynamic tool '{function_name}' for {agent_type}"

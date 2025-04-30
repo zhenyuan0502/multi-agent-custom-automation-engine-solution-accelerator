@@ -323,6 +323,9 @@ class PlannerAgent(BaseAgent):
 
             # Ensure we're using the right pattern for Azure AI agents with semantic kernel
             # Properly handle async generation
+            # thread = AzureAIAgentThread(
+            #     thread_id=input_task.session_id, client=self.client
+            # )
             thread = None
             # thread = self.client.agents.create_thread(thread_id=input_task.session_id)
             async_generator = self._azure_ai_agent.invoke(
