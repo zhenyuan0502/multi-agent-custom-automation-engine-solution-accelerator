@@ -36,7 +36,6 @@ class HumanAgent(BaseAgent):
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
         agent_name: str = AgentType.HUMAN.value,
-        config_path: Optional[str] = None,
         client=None,
         definition=None,
     ) -> None:
@@ -60,17 +59,9 @@ class HumanAgent(BaseAgent):
             tools_dict = HumanTools.get_all_kernel_functions()
             tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
 
-            # Load the human tools configuration for system message
-            config = self.load_tools_config("human", config_path)
-
             # Use system message from config if not explicitly provided
             if not system_message:
-                system_message = config.get(
-                    "system_message",
-                    "You are an AI Agent. You represent a human employee in our organization. "
-                    "You can perform day-to-day activities and collaborate with other functional agents. "
-                    "When someone asks you to complete a task, summarize what was done.",
-                )
+                system_message = self.default_system_message(agent_name)
 
             # Use agent name from config if available
             agent_name = AgentType.HUMAN.value
@@ -91,6 +82,16 @@ class HumanAgent(BaseAgent):
     def plugins(self):
         """Get the plugins for the human agent."""
         return HumanTools.get_all_kernel_functions()
+
+    @staticmethod
+    def default_system_message(agent_name=None) -> str:
+        """Get the default system message for the agent.
+        Args:
+            agent_name: The name of the agent (optional)
+        Returns:
+            The default system message for the agent
+        """
+        return "You are representing a human user in the conversation. You handle interactions that require human feedback or input, such as providing clarification, approving plans, or giving feedback on steps."
 
     async def handle_human_feedback(self, human_feedback: HumanFeedback) -> str:
         """Handle human feedback on a step.

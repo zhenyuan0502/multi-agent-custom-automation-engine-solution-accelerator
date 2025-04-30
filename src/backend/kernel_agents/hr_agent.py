@@ -25,7 +25,6 @@ class HrAgent(BaseAgent):
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
         agent_name: str = AgentType.HR.value,
-        config_path: Optional[str] = None,
         client=None,
         definition=None,
     ) -> None:
@@ -49,16 +48,9 @@ class HrAgent(BaseAgent):
             tools_dict = HrTools.get_all_kernel_functions()
             tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
 
-            # Load the HR tools configuration for system message
-            config = self.load_tools_config("hr", config_path)
-
             # Use system message from config if not explicitly provided
             if not system_message:
-                system_message = config.get(
-                    "system_message",
-                    "You are an AI Agent. You have knowledge about HR (e.g., human resources), policies, procedures, and onboarding guidelines.",
-                )
-
+                system_message = self.default_system_message(agent_name)
             # Use agent name from config if available
             agent_name = AgentType.HR.value
 
@@ -73,6 +65,16 @@ class HrAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @staticmethod
+    def default_system_message(agent_name=None) -> str:
+        """Get the default system message for the agent.
+        Args:
+            agent_name: The name of the agent (optional)
+        Returns:
+            The default system message for the agent
+        """
+        return "You are an AI Agent. You have knowledge about HR (e.g., human resources), policies, procedures, and onboarding guidelines."
 
     @property
     def plugins(self):
