@@ -50,7 +50,6 @@ class PlannerAgent(BaseAgent):
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
         agent_name: str = AgentType.PLANNER.value,
-        config_path: Optional[str] = None,
         available_agents: List[str] = None,
         agent_tools_list: List[str] = None,
         agent_instances: Optional[Dict[str, BaseAgent]] = None,
@@ -76,7 +75,7 @@ class PlannerAgent(BaseAgent):
         """
         # Default system message if not provided
         if not system_message:
-            system_message = "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
+            system_message = self.default_system_message(agent_name)
 
         # Initialize the base agent
         super().__init__(
@@ -87,7 +86,6 @@ class PlannerAgent(BaseAgent):
             memory_store=memory_store,
             tools=tools,
             system_message=system_message,
-            agent_type=AgentType.PLANNER.value,  # Use planner_tools.json if available
             client=client,
             definition=definition,
         )
@@ -108,6 +106,16 @@ class PlannerAgent(BaseAgent):
         # Create the Azure AI Agent for planning operations
         # This will be initialized in async_init
         self._azure_ai_agent = None
+
+    @staticmethod
+    def default_system_message(agent_name=None) -> str:
+        """Get the default system message for the agent.
+        Args:
+            agent_name: The name of the agent (optional)
+        Returns:
+            The default system message for the agent
+        """
+        return "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
 
     async def async_init(self) -> None:
         """Asynchronously initialize the PlannerAgent.
@@ -694,14 +702,16 @@ class PlannerAgent(BaseAgent):
             for agent_name, agent in self._agent_instances.items():
                 # First try to get tools directly from the agent's corresponding tool class
                 tools_dict = None
-                
+
                 # Try to access plugins property which returns the get_all_kernel_functions result
                 if hasattr(agent, "plugins"):
                     try:
                         # Access plugins as a property, not a method
                         tools_dict = agent.plugins
-                        logging.info(f"Got tools dictionary from {agent_name}'s plugins property")
-                        
+                        logging.info(
+                            f"Got tools dictionary from {agent_name}'s plugins property"
+                        )
+
                         # Check if tools_dict is a list or a dictionary
                         if isinstance(tools_dict, list):
                             # Convert list to dictionary if needed
@@ -710,11 +720,15 @@ class PlannerAgent(BaseAgent):
                                 func_name = getattr(func, "__name__", f"function_{i}")
                                 tools_dict_converted[func_name] = func
                             tools_dict = tools_dict_converted
-                            logging.info(f"Converted tools list to dictionary for {agent_name}")
-                        
+                            logging.info(
+                                f"Converted tools list to dictionary for {agent_name}"
+                            )
+
                     except Exception as e:
-                        logging.warning(f"Error accessing plugins property for {agent_name}: {e}")
-                        
+                        logging.warning(
+                            f"Error accessing plugins property for {agent_name}: {e}"
+                        )
+
                 # Process tools from tools_dict if available
                 if tools_dict:
                     for func_name, func in tools_dict.items():

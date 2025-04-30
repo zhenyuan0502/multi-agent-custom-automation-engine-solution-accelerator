@@ -6,7 +6,7 @@ from semantic_kernel.functions import KernelFunction
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
-from src.backend.kernel_tools.product_tools import ProductTools
+from kernel_tools.product_tools import ProductTools
 
 
 class ProductAgent(BaseAgent):
@@ -51,18 +51,12 @@ class ProductAgent(BaseAgent):
             tools_dict = ProductTools.get_all_kernel_functions()
             tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
 
-            # Load the product tools configuration for system message
-            config = self.load_tools_config("product", config_path)
+        # Use system message from config if not explicitly provided
+        if not system_message:
+            system_message = self.default_system_message(agent_name)
 
-            # Use system message from config if not explicitly provided
-            if not system_message:
-                system_message = config.get(
-                    "system_message",
-                    "You are a Product agent. You have knowledge about product management, development, and compliance guidelines. When asked to call a function, you should summarize back what was done.",
-                )
-
-            # Use agent name from config if available
-            agent_name = AgentType.PRODUCT.value
+        # Use agent name from config if available
+        agent_name = AgentType.PRODUCT.value
 
         super().__init__(
             agent_name=agent_name,
@@ -75,6 +69,16 @@ class ProductAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @staticmethod
+    def default_system_message(agent_name=None) -> str:
+        """Get the default system message for the agent.
+        Args:
+            agent_name: The name of the agent (optional)
+        Returns:
+            The default system message for the agent
+        """
+        return "You are a Product agent. You have knowledge about product management, development, and compliance guidelines. When asked to call a function, you should summarize back what was done."
 
     @property
     def plugins(self):

@@ -6,7 +6,7 @@ from semantic_kernel.functions import KernelFunction
 from kernel_agents.agent_base import BaseAgent
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from models.messages_kernel import AgentType
-from src.backend.kernel_tools.procurement_tools import ProcurementTools
+from kernel_tools.procurement_tools import ProcurementTools
 
 
 class ProcurementAgent(BaseAgent):
@@ -24,7 +24,6 @@ class ProcurementAgent(BaseAgent):
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
         agent_name: str = AgentType.PROCUREMENT.value,
-        config_path: Optional[str] = None,
         client=None,
         definition=None,
     ) -> None:
@@ -38,7 +37,6 @@ class ProcurementAgent(BaseAgent):
             tools: List of tools available to this agent (optional)
             system_message: Optional system message for the agent
             agent_name: Optional name for the agent (defaults to "ProcurementAgent")
-            config_path: Optional path to the Procurement tools configuration file
             client: Optional client instance
             definition: Optional definition instance
         """
@@ -48,18 +46,12 @@ class ProcurementAgent(BaseAgent):
             tools_dict = ProcurementTools.get_all_kernel_functions()
             tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
 
-            # Load the procurement tools configuration for system message
-            config = self.load_tools_config("procurement", config_path)
-
             # Use system message from config if not explicitly provided
-            if not system_message:
-                system_message = config.get(
-                    "system_message",
-                    "You are an AI Agent. You are able to assist with procurement enquiries and order items. If you need additional information from the human user asking the question in order to complete a request, ask before calling a function.",
-                )
+        if not system_message:
+            system_message = self.default_system_message(agent_name)
 
-            # Use agent name from config if available
-            agent_name = AgentType.PROCUREMENT.value
+        # Use agent name from config if available
+        agent_name = AgentType.PROCUREMENT.value
 
         super().__init__(
             agent_name=agent_name,
@@ -72,6 +64,16 @@ class ProcurementAgent(BaseAgent):
             client=client,
             definition=definition,
         )
+
+    @staticmethod
+    def default_system_message(agent_name=None) -> str:
+        """Get the default system message for the agent.
+        Args:
+            agent_name: The name of the agent (optional)
+        Returns:
+            The default system message for the agent
+        """
+        return "You are a Procurement agent. You specialize in purchasing, vendor management, supply chain operations, and inventory control. You help with creating purchase orders, managing vendors, tracking orders, and ensuring efficient procurement processes."
 
     @property
     def plugins(self):

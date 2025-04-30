@@ -71,7 +71,7 @@ class GroupChatManager(BaseAgent):
         """
         # Default system message if not provided
         if not system_message:
-            system_message = "You are a GroupChatManager agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
+            system_message = self.default_system_message(agent_name)
 
         # Initialize the base agent
         super().__init__(
@@ -82,7 +82,6 @@ class GroupChatManager(BaseAgent):
             memory_store=memory_store,
             tools=tools,
             system_message=system_message,
-            agent_type=AgentType.GROUP_CHAT_MANAGER.value,  # Use GroupChatManager_tools.json if available
             client=client,
             definition=definition,
         )
@@ -103,6 +102,16 @@ class GroupChatManager(BaseAgent):
         # Create the Azure AI Agent for group chat operations
         # This will be initialized in async_init
         self._azure_ai_agent = None
+
+    @staticmethod
+    def default_system_message(agent_name=None) -> str:
+        """Get the default system message for the agent.
+        Args:
+            agent_name: The name of the agent (optional)
+        Returns:
+            The default system message for the agent
+        """
+        return "You are a GroupChatManager agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents."
 
     async def handle_input_task(self, message: InputTask) -> Plan:
         """

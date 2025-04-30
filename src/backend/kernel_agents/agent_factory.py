@@ -66,15 +66,15 @@ class AgentFactory:
 
     # System messages for each agent type
     _agent_system_messages: Dict[AgentType, str] = {
-        AgentType.HR: "You are an HR assistant helping with human resource related tasks.",
-        AgentType.MARKETING: "You are a marketing expert helping with marketing related tasks.",
-        AgentType.PRODUCT: "You are a product expert helping with product related tasks.",
-        AgentType.PROCUREMENT: "You are a procurement expert helping with procurement related tasks.",
-        AgentType.TECH_SUPPORT: "You are a technical support expert helping with technical issues.",
-        AgentType.GENERIC: "You are a helpful assistant ready to help with various tasks.",
-        AgentType.HUMAN: "You are representing a human user in the conversation.",
-        AgentType.PLANNER: "You are a Planner agent responsible for creating and managing plans. You analyze tasks, break them down into steps, and assign them to the appropriate specialized agents.",
-        AgentType.GROUP_CHAT_MANAGER: "You are a Group Chat Manager coordinating conversations between different agents to execute plans efficiently.",
+        AgentType.HR: HrAgent.default_system_message(),
+        AgentType.MARKETING: MarketingAgent.default_system_message(),
+        AgentType.PRODUCT: ProductAgent.default_system_message(),
+        AgentType.PROCUREMENT: ProcurementAgent.default_system_message(),
+        AgentType.TECH_SUPPORT: TechSupportAgent.default_system_message(),
+        AgentType.GENERIC: GenericAgent.default_system_message(),
+        AgentType.HUMAN: HumanAgent.default_system_message(),
+        AgentType.PLANNER: PlannerAgent.default_system_message(),
+        AgentType.GROUP_CHAT_MANAGER: GroupChatManager.default_system_message(),
     }
 
     # Cache of agent instances by session_id and agent_type
@@ -84,37 +84,14 @@ class AgentFactory:
     _azure_ai_agent_cache: Dict[str, Dict[str, AzureAIAgent]] = {}
 
     @classmethod
-    def register_agent_class(
-        cls,
-        agent_type: AgentType,
-        agent_class: Type[BaseAgent],
-        agent_type_string: Optional[str] = None,
-        system_message: Optional[str] = None,
-    ) -> None:
-        """Register a new agent class with the factory.
-
-        Args:
-            agent_type: The type of agent to register
-            agent_class: The class to use for this agent type
-            agent_type_string: Optional string identifier for the agent type (for tool loading)
-            system_message: Optional system message for the agent
-        """
-        cls._agent_classes[agent_type] = agent_class
-        if agent_type_string:
-            cls._agent_type_strings[agent_type] = agent_type_string
-        if system_message:
-            cls._agent_system_messages[agent_type] = system_message
-        logger.info(
-            f"Registered agent class {agent_class.__name__} for type {agent_type.value}"
-        )
-
-    @classmethod
     async def create_agent(
         cls,
         agent_type: AgentType,
         session_id: str,
         user_id: str,
         temperature: float = 0.0,
+        memory_store: Optional[CosmosMemoryContext] = None,
+        kernel: Optional[Kernel] = None,
         system_message: Optional[str] = None,
         response_format: Optional[Any] = None,
         **kwargs,
@@ -160,10 +137,12 @@ class AgentFactory:
             raise ValueError(f"Unknown agent type: {agent_type}")
 
         # Create memory store
-        memory_store = CosmosMemoryContext(session_id, user_id)
+        if memory_store is None:
+            memory_store = CosmosMemoryContext(session_id, user_id)
 
         # Create a kernel using the AppConfig instance
-        kernel = config.create_kernel()
+        if kernel is None:
+            kernel = config.create_kernel()
 
         # Use default system message if none provided
         if system_message is None:
@@ -176,7 +155,7 @@ class AgentFactory:
         agent_type_str = cls._agent_type_strings.get(
             agent_type, agent_type.value.lower()
         )
-        tools = await cls._load_tools_for_agent(kernel, agent_type_str)
+        tools = None
 
         # Build the agent definition (functions schema)
         definition = None
@@ -254,39 +233,13 @@ class AgentFactory:
         return agent
 
     @classmethod
-    async def _load_tools_for_agent(
-        cls, kernel: Kernel, agent_type: str
-    ) -> List[KernelFunction]:
-        """Load tools for an agent from the tools directory.
-
-        This tries to load tool configurations from JSON files. If that fails,
-        it returns an empty list for agents that don't need tools.
-
-        Args:
-            kernel: The semantic kernel instance
-            agent_type: The agent type string identifier
-
-        Returns:
-            A list of kernel functions for the agent
-        """
-        try:
-            # Try to use the BaseAgent's tool loading mechanism
-            tools = BaseAgent.get_tools_from_config(kernel, agent_type)
-            logger.info(f"Successfully loaded {len(tools)} tools for {agent_type}")
-            return tools
-        except FileNotFoundError:
-            # No tool configuration file found - this is expected for some agents
-            logger.info(
-                f"No tools defined for agent type '{agent_type}'. Returning empty list."
-            )
-            return []
-        except Exception as e:
-            logger.warning(f"Error loading tools for {agent_type}: {e}")
-            return []
-
-    @classmethod
     async def create_all_agents(
-        cls, session_id: str, user_id: str, temperature: float = 0.0
+        cls,
+        session_id: str,
+        user_id: str,
+        temperature: float = 0.0,
+        memory_store: Optional[CosmosMemoryContext] = None,
+        kernel: Optional[Kernel] = None,
     ) -> Dict[AgentType, BaseAgent]:
         """Create all agent types for a session in a specific order.
 
@@ -328,6 +281,8 @@ class AgentFactory:
                 session_id=session_id,
                 user_id=user_id,
                 temperature=temperature,
+                memory_store=memory_store,
+                kernel=kernel,
             )
 
         # Create agent name to instance mapping for the planner
