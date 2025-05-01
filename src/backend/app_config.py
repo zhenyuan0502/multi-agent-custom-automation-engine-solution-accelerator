@@ -194,6 +194,7 @@ class AppConfig:
         agent_name: str,
         instructions: str,
         tools: Optional[List[KernelFunction]] = None,
+        client=None,
         response_format=None,
         temperature: float = 0.0,
     ):
@@ -216,15 +217,16 @@ class AppConfig:
         """
         try:
             # Get the AIProjectClient
-            project_client = self.get_ai_project_client()
+            if client is None:
+                client = self.get_ai_project_client()
 
             # First try to get an existing agent with this name as assistant_id
             try:
 
-                existing_definition = await project_client.agents.get_agent(agent_name)
+                existing_definition = await client.agents.get_agent(agent_name)
                 # Create the agent instance directly with project_client and existing definition
                 agent = AzureAIAgent(
-                    client=project_client,
+                    client=client,
                     definition=existing_definition,
                     plugins=tools,
                 )
@@ -244,7 +246,7 @@ class AppConfig:
                     )
 
             # Create the agent using the project client with the agent_name as both name and assistantId
-            agent_definition = await project_client.agents.create_agent(
+            agent_definition = await client.agents.create_agent(
                 model=self.AZURE_OPENAI_DEPLOYMENT_NAME,
                 name=agent_name,
                 instructions=instructions,
@@ -254,7 +256,7 @@ class AppConfig:
 
             # Create the agent instance directly with project_client and definition
             agent = AzureAIAgent(
-                client=project_client,
+                client=client,
                 definition=agent_definition,
                 plugins=tools,
             )

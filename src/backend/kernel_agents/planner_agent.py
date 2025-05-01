@@ -32,6 +32,12 @@ from models.messages_kernel import (
 )
 from event_utils import track_event_if_configured
 from app_config import config
+from kernel_tools.hr_tools import HrTools
+from kernel_tools.generic_tools import GenericTools
+from kernel_tools.marketing_tools import MarketingTools
+from kernel_tools.procurement_tools import ProcurementTools
+from kernel_tools.product_tools import ProductTools
+from kernel_tools.tech_support_tools import TechSupportTools
 
 
 class PlannerAgent(BaseAgent):
@@ -50,7 +56,6 @@ class PlannerAgent(BaseAgent):
         system_message: Optional[str] = None,
         agent_name: str = AgentType.PLANNER.value,
         available_agents: List[str] = None,
-        agent_tools_list: List[str] = None,
         agent_instances: Optional[Dict[str, BaseAgent]] = None,
         client=None,
         definition=None,
@@ -97,7 +102,15 @@ class PlannerAgent(BaseAgent):
             AgentType.TECH_SUPPORT.value,
             AgentType.GENERIC.value,
         ]
-        self._agent_tools_list = agent_tools_list or []
+        self._agent_tools_list = {
+            AgentType.HR: HrTools.generate_tools_json_doc(),
+            AgentType.MARKETING: MarketingTools.generate_tools_json_doc(),
+            AgentType.PRODUCT: ProductTools.generate_tools_json_doc(),
+            AgentType.PROCUREMENT: ProcurementTools.generate_tools_json_doc(),
+            AgentType.TECH_SUPPORT: TechSupportTools.generate_tools_json_doc(),
+            AgentType.GENERIC: GenericTools.generate_tools_json_doc(),
+        }
+
         self._agent_instances = agent_instances or {}
 
     @staticmethod
@@ -311,8 +324,6 @@ class PlannerAgent(BaseAgent):
             kernel_args = KernelArguments(**args)
             # kernel_args["input"] = f"TASK: {input_task.description}\n\n{instruction}"
 
-            logging.info(f"Kernel arguments: {kernel_args}")
-
             # Get the schema for our expected response format
 
             # Ensure we're using the right pattern for Azure AI agents with semantic kernel
@@ -522,177 +533,9 @@ class PlannerAgent(BaseAgent):
         # Create list of available tools in JSON-like format
         tools_list = []
 
-        # Check if we have agent instances to extract tools from
-        if hasattr(self, "_agent_instances") and self._agent_instances:
-            # Process each agent to get their tools
-            for agent_name, agent in self._agent_instances.items():
-                # First try to get tools directly from the agent's corresponding tool class
-                tools_dict = None
-
-                # Try to access plugins property which returns the get_all_kernel_functions result
-                if hasattr(agent, "plugins"):
-                    try:
-                        # Access plugins as a property, not a method
-                        tools_dict = agent.plugins
-                        logging.info(
-                            f"Got tools dictionary from {agent_name}'s plugins property"
-                        )
-
-                        # Check if tools_dict is a list or a dictionary
-                        if isinstance(tools_dict, list):
-                            # Convert list to dictionary if needed
-                            tools_dict_converted = {}
-                            for i, func in enumerate(tools_dict):
-                                func_name = getattr(func, "__name__", f"function_{i}")
-                                tools_dict_converted[func_name] = func
-                            tools_dict = tools_dict_converted
-                            logging.info(
-                                f"Converted tools list to dictionary for {agent_name}"
-                            )
-
-                    except Exception as e:
-                        logging.warning(
-                            f"Error accessing plugins property for {agent_name}: {e}"
-                        )
-
-                # Process tools from tools_dict if available
-                if tools_dict:
-                    for func_name, func in tools_dict.items():
-                        # Check if the function has necessary attributes
-                        if hasattr(func, "__name__") and hasattr(func, "__doc__"):
-                            description = func.__doc__ or f"Function {func_name}"
-
-                            # Create tool entry
-                            tool_entry = {
-                                "agent": agent_name,
-                                "function": func_name,
-                                "description": description,
-                                "arguments": "{}",  # Default empty dict
-                            }
-
-                            tools_list.append(tool_entry)
-
-                # Fall back to the previous approach if no tools_dict found
-                elif hasattr(agent, "_tools") and agent._tools:
-                    # Add each tool from this agent
-                    for tool in agent._tools:
-                        if hasattr(tool, "name") and hasattr(tool, "description"):
-                            # Extract function parameters/arguments
-                            args_dict = {}
-                            if hasattr(tool, "parameters"):
-                                # Check if we have kernel_arguments that need to be processed
-                                has_kernel_args = any(
-                                    param.name == "kernel_arguments"
-                                    for param in tool.parameters
-                                )
-                                has_kwargs = any(
-                                    param.name == "kwargs" for param in tool.parameters
-                                )
-
-                                # Process regular parameters first
-                                for param in tool.parameters:
-                                    # Skip kernel_arguments and kwargs as we'll handle them specially
-                                    if param.name in ["kernel_arguments", "kwargs"]:
-                                        continue
-
-                                    param_type = "string"  # Default type
-                                    if hasattr(param, "type"):
-                                        param_type = param.type
-
-                                    args_dict[param.name] = {
-                                        "description": (
-                                            param.description
-                                            if param.description
-                                            else param.name
-                                        ),
-                                        "title": param.name.replace("_", " ").title(),
-                                        "type": param_type,
-                                    }
-
-                                # If we have a kernel_arguments parameter, introspect it to extract its values
-                                # This is a special case handling for kernel_arguments to include its fields in the arguments
-                                if has_kernel_args:
-                                    # Check if we have kernel_parameter_descriptions
-                                    if hasattr(tool, "kernel_parameter_descriptions"):
-                                        # Extract parameter descriptions from the kernel
-                                        for (
-                                            key,
-                                            description,
-                                        ) in tool.kernel_parameter_descriptions.items():
-                                            if (
-                                                key not in args_dict
-                                            ):  # Only add if not already added
-                                                args_dict[key] = {
-                                                    "description": (
-                                                        description
-                                                        if description
-                                                        else key
-                                                    ),
-                                                    "title": key.replace(
-                                                        "_", " "
-                                                    ).title(),
-                                                    "type": "string",  # Default to string type
-                                                }
-                                    # Fall back to function's description if no specific descriptions
-                                    elif hasattr(tool, "description") and not args_dict:
-                                        # Add a generic parameter with the function's description
-                                        args_dict["input"] = {
-                                            "description": f"Input for {tool.name}: {tool.description}",
-                                            "title": "Input",
-                                            "type": "string",
-                                        }
-
-                            # If after all processing, arguments are still empty, add a dummy input parameter
-                            if not args_dict:
-                                args_dict["input"] = {
-                                    "description": f"Input for {tool.name}",
-                                    "title": "Input",
-                                    "type": "string",
-                                }
-
-                            # Create tool entry
-                            tool_entry = {
-                                "agent": agent_name,
-                                "function": tool.name,
-                                "description": tool.description,
-                                "arguments": str(args_dict),
-                            }
-
-                            tools_list.append(tool_entry)
-
-            logging.info(f"Generated {len(tools_list)} tools from agent instances")
-
-        # If we couldn't extract tools from agent instances, create a simplified format
-        if not tools_list:
-            logging.warning(
-                "No tool details extracted from agent instances, creating simplified format"
-            )
-            if self._agent_tools_list:
-                # Create dummy entries from the existing tool list strings
-                for tool_str in self._agent_tools_list:
-                    if ":" in tool_str:
-                        parts = tool_str.split(":")
-                        if len(parts) >= 2:
-                            agent_part = parts[0].strip()
-                            function_part = parts[1].strip()
-
-                            # Extract agent name if format is "Agent: AgentName"
-                            agent_name = agent_part.replace("Agent", "").strip()
-                            if not agent_name:
-                                agent_name = AgentType.GENERIC.value
-
-                            tools_list.append(
-                                {
-                                    "agent": agent_name,
-                                    "function": function_part,
-                                    "description": f"Function {function_part} from {agent_name}",
-                                    "arguments": "{}",
-                                }
-                            )
-
-        # Convert the tools list to a string representation
-        logging.info(f"Tools list: {len(tools_list)}")
-        logging
+        for agent_name, tools in self._agent_tools_list.items():
+            if agent_name in self._available_agents:
+                tools_list.append(tools)
 
         tools_str = str(tools_list)
 
