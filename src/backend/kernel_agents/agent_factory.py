@@ -142,8 +142,6 @@ class AgentFactory:
         if memory_store is None:
             memory_store = CosmosMemoryContext(session_id, user_id)
 
-        kernel = config.create_kernel()
-
         # Use default system message if none provided
         if system_message is None:
             system_message = cls._agent_system_messages.get(
