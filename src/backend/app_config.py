@@ -220,30 +220,41 @@ class AppConfig:
             if client is None:
                 client = self.get_ai_project_client()
 
-            # First try to get an existing agent with this name as assistant_id
-            try:
+            # # ToDo: This is the fixed code but commenting it out as agent clean up is no happening yet
+            #  # and there are multiple versions of agents due to testing
+            # # First try to get an existing agent with this name as assistant_id
+            # try:
+            #     agent_id = None
+            #     agent_list = await client.agents.list_agents()
+            #     for agent in agent_list.data:
+            #         if agent.name == agent_name:
+            #             agent_id = agent.id
+            #             break
+            #             # If the agent already exists, we can use it directly
+            #             # Get the existing agent definition
+            #     existing_definition = await client.agents.get_agent(agent_id)
+            #     # Create the agent instance directly with project_client and existing definition
+            #     agent = AzureAIAgent(
+            #         client=client,
+            #         definition=existing_definition,
+            #         plugins=tools,
+            #     )
 
-                existing_definition = await client.agents.get_agent(agent_name)
-                # Create the agent instance directly with project_client and existing definition
-                agent = AzureAIAgent(
-                    client=client,
-                    definition=existing_definition,
-                    plugins=tools,
-                )
+            #     client.agents.list_agents()
 
-                return agent
-            except Exception as e:
-                # The Azure AI Projects SDK throws an exception when the agent doesn't exist
-                # (not returning None), so we catch it and proceed to create a new agent
-                if "ResourceNotFound" in str(e) or "404" in str(e):
-                    logging.info(
-                        f"Agent with ID {agent_name} not found. Will create a new one."
-                    )
-                else:
-                    # Log unexpected errors but still try to create a new agent
-                    logging.warning(
-                        f"Unexpected error while retrieving agent {agent_name}: {str(e)}. Attempting to create new agent."
-                    )
+            #     return agent
+            # except Exception as e:
+            #     # The Azure AI Projects SDK throws an exception when the agent doesn't exist
+            #     # (not returning None), so we catch it and proceed to create a new agent
+            #     if "ResourceNotFound" in str(e) or "404" in str(e):
+            #         logging.info(
+            #             f"Agent with ID {agent_name} not found. Will create a new one."
+            #         )
+            #     else:
+            #         # Log unexpected errors but still try to create a new agent
+            #         logging.warning(
+            #             f"Unexpected error while retrieving agent {agent_name}: {str(e)}. Attempting to create new agent."
+            #         )
 
             # Create the agent using the project client with the agent_name as both name and assistantId
             agent_definition = await client.agents.create_agent(
