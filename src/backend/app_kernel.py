@@ -273,7 +273,7 @@ async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Reques
         logging.error(f"Error creating AIProjectClient: {client_exc}")
 
     human_agent = await AgentFactory.create_agent(
-        agent_type=AgentType.HUMAN.value,
+        agent_type=AgentType.HUMAN,
         session_id=human_feedback.session_id,
         user_id=user_id,
         memory_store=memory_store,
@@ -379,7 +379,7 @@ async def human_clarification_endpoint(
         logging.error(f"Error creating AIProjectClient: {client_exc}")
 
     human_agent = await AgentFactory.create_agent(
-        agent_type=AgentType.HUMAN.value,
+        agent_type=AgentType.HUMAN,
         session_id=human_clarification.session_id,
         user_id=user_id,
         memory_store=memory_store,
