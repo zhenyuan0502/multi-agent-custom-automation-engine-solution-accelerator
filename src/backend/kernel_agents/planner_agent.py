@@ -181,7 +181,7 @@ class PlannerAgent(BaseAgent):
                     user_id=self._user_id,
                     plan_id=plan.id,
                     content=f"Generated a plan with {len(steps)} steps. Click the blue check box beside each step to complete it, click the x to remove this step.",
-                    source="PlannerAgent",
+                    source=AgentType.PLANNER.value,
                     step_id="",
                 )
             )
@@ -193,7 +193,7 @@ class PlannerAgent(BaseAgent):
                     "user_id": self._user_id,
                     "plan_id": plan.id,
                     "content": f"Generated a plan with {len(steps)} steps. Click the blue check box beside each step to complete it, click the x to remove this step.",
-                    "source": "PlannerAgent",
+                    "source": AgentType.PLANNER.value,
                 },
             )
 
@@ -208,7 +208,7 @@ class PlannerAgent(BaseAgent):
                         user_id=self._user_id,
                         plan_id=plan.id,
                         content=f"I require additional information before we can proceed: {plan.human_clarification_request}",
-                        source="PlannerAgent",
+                        source=AgentType.PLANNER.value,
                         step_id="",
                     )
                 )
@@ -220,7 +220,7 @@ class PlannerAgent(BaseAgent):
                         "user_id": self._user_id,
                         "plan_id": plan.id,
                         "content": f"I require additional information before we can proceed: {plan.human_clarification_request}",
-                        "source": "PlannerAgent",
+                        "source": AgentType.PLANNER.value,
                     },
                 )
 
@@ -275,7 +275,7 @@ class PlannerAgent(BaseAgent):
                 user_id=self._user_id,
                 plan_id="",
                 content="Thanks. The plan has been updated.",
-                source="PlannerAgent",
+                source=AgentType.PLANNER.value,
                 step_id="",
             )
         )
@@ -286,7 +286,7 @@ class PlannerAgent(BaseAgent):
                 "session_id": session_id,
                 "user_id": self._user_id,
                 "content": "Thanks. The plan has been updated.",
-                "source": "PlannerAgent",
+                "source": AgentType.PLANNER.value,
             },
         )
 
@@ -508,7 +508,7 @@ class PlannerAgent(BaseAgent):
                         "user_id": self._user_id,
                         "error": str(e),
                         "description": input_task.description,
-                        "source": "PlannerAgent",
+                        "source": AgentType.PLANNER.value,
                     },
                 )
             except Exception as event_error:
