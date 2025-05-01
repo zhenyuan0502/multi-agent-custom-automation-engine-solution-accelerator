@@ -103,12 +103,12 @@ class PlannerAgent(BaseAgent):
             AgentType.GENERIC.value,
         ]
         self._agent_tools_list = {
-            AgentType.HR: HrTools.get_all_kernel_functions(),
-            AgentType.MARKETING: MarketingTools.get_all_kernel_functions(),
-            AgentType.PRODUCT: ProductTools.get_all_kernel_functions(),
-            AgentType.PROCUREMENT: ProcurementTools.get_all_kernel_functions(),
-            AgentType.TECH_SUPPORT: TechSupportTools.get_all_kernel_functions(),
-            AgentType.GENERIC: GenericTools.get_all_kernel_functions(),
+            AgentType.HR: HrTools.generate_tools_json_doc(),
+            AgentType.MARKETING: MarketingTools.generate_tools_json_doc(),
+            AgentType.PRODUCT: ProductTools.generate_tools_json_doc(),
+            AgentType.PROCUREMENT: ProcurementTools.generate_tools_json_doc(),
+            AgentType.TECH_SUPPORT: TechSupportTools.generate_tools_json_doc(),
+            AgentType.GENERIC: GenericTools.generate_tools_json_doc(),
         }
 
         self._agent_instances = agent_instances or {}
@@ -324,8 +324,6 @@ class PlannerAgent(BaseAgent):
             kernel_args = KernelArguments(**args)
             # kernel_args["input"] = f"TASK: {input_task.description}\n\n{instruction}"
 
-            logging.info(f"Kernel arguments: {kernel_args}")
-
             # Get the schema for our expected response format
 
             # Ensure we're using the right pattern for Azure AI agents with semantic kernel
@@ -534,6 +532,10 @@ class PlannerAgent(BaseAgent):
 
         # Create list of available tools in JSON-like format
         tools_list = []
+
+        for agent_name, tools in self._agent_tools_list.items():
+            if agent_name in self._available_agents:
+                tools_list.append(tools)
 
         tools_str = str(tools_list)
 
