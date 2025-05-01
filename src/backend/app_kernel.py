@@ -43,14 +43,18 @@ from kernel_agents.agent_factory import AgentFactory
 from app_config import config
 
 # # Check if the Application Insights Instrumentation Key is set in the environment variables
-# instrumentation_key = os.getenv("APPLICATIONINSIGHTS_INSTRUMENTATION_KEY")
-# if instrumentation_key:
-#     # Configure Application Insights if the Instrumentation Key is found
-#     configure_azure_monitor(connection_string=instrumentation_key)
-#     logging.info("Application Insights configured with the provided Instrumentation Key")
-# else:
-#     # Log a warning if the Instrumentation Key is not found
-#     logging.warning("No Application Insights Instrumentation Key found. Skipping configuration")
+instrumentation_key = os.getenv("APPLICATIONINSIGHTS_INSTRUMENTATION_KEY")
+if instrumentation_key:
+    # Configure Application Insights if the Instrumentation Key is found
+    configure_azure_monitor(connection_string=instrumentation_key)
+    logging.info(
+        "Application Insights configured with the provided Instrumentation Key"
+    )
+else:
+    # Log a warning if the Instrumentation Key is not found
+    logging.warning(
+        "No Application Insights Instrumentation Key found. Skipping configuration"
+    )
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -62,9 +66,9 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
 logging.getLogger("azure.identity.aio._internal").setLevel(logging.WARNING)
 
 # # Suppress info logs from OpenTelemetry exporter
-# logging.getLogger("azure.monitor.opentelemetry.exporter.export._base").setLevel(
-#     logging.WARNING
-# )
+logging.getLogger("azure.monitor.opentelemetry.exporter.export._base").setLevel(
+    logging.WARNING
+)
 
 # Initialize the FastAPI app
 app = FastAPI()
