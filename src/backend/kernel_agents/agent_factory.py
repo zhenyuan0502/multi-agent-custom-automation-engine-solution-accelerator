@@ -91,7 +91,6 @@ class AgentFactory:
         user_id: str,
         temperature: float = 0.0,
         memory_store: Optional[CosmosMemoryContext] = None,
-        kernel: Optional[Kernel] = None,
         system_message: Optional[str] = None,
         response_format: Optional[Any] = None,
         **kwargs,
@@ -143,9 +142,7 @@ class AgentFactory:
         if memory_store is None:
             memory_store = CosmosMemoryContext(session_id, user_id)
 
-        # Create a kernel using the AppConfig instance
-        if kernel is None:
-            kernel = config.create_kernel()
+        kernel = config.create_kernel()
 
         # Use default system message if none provided
         if system_message is None:
@@ -201,7 +198,6 @@ class AgentFactory:
                 k: v
                 for k, v in {
                     "agent_name": agent_type_str,
-                    "kernel": kernel,
                     "session_id": session_id,
                     "user_id": user_id,
                     "memory_store": memory_store,
@@ -241,7 +237,6 @@ class AgentFactory:
         user_id: str,
         temperature: float = 0.0,
         memory_store: Optional[CosmosMemoryContext] = None,
-        kernel: Optional[Kernel] = None,
     ) -> Dict[AgentType, BaseAgent]:
         """Create all agent types for a session in a specific order.
 
@@ -284,7 +279,6 @@ class AgentFactory:
                 user_id=user_id,
                 temperature=temperature,
                 memory_store=memory_store,
-                kernel=kernel,
             )
 
         # Create agent name to instance mapping for the planner

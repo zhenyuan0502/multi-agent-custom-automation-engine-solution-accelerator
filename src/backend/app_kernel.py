@@ -127,7 +127,6 @@ async def input_task_endpoint(input_task: InputTask, request: Request):
         agents = await AgentFactory.create_all_agents(
             session_id=input_task.session_id,
             user_id=user_id,
-            kernel=kernel,
             memory_store=memory_store,
         )
 
@@ -251,10 +250,7 @@ async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Reques
         human_feedback.session_id, user_id
     )
     agents = await AgentFactory.create_all_agents(
-        session_id=human_feedback.session_id,
-        user_id=user_id,
-        memory_store=memory_store,
-        kernel=kernel,
+        session_id=human_feedback.session_id, user_id=user_id, memory_store=memory_store
     )
 
     # Send the feedback to the human agent
@@ -341,7 +337,6 @@ async def human_clarification_endpoint(
         session_id=human_clarification.session_id,
         user_id=user_id,
         memory_store=memory_store,
-        kernel=kernel,
     )
 
     # Send the feedback to the human agent
@@ -435,7 +430,6 @@ async def approve_step_endpoint(
     agents = await AgentFactory.create_all_agents(
         session_id=human_feedback.session_id,
         user_id=user_id,
-        kernel=kernel,
         memory_store=memory_store,
     )
 

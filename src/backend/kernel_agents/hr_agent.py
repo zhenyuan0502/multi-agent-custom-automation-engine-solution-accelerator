@@ -17,7 +17,6 @@ class HrAgent(BaseAgent):
 
     def __init__(
         self,
-        kernel: sk.Kernel,
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
@@ -55,7 +54,6 @@ class HrAgent(BaseAgent):
 
         super().__init__(
             agent_name=agent_name,
-            kernel=kernel,
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,

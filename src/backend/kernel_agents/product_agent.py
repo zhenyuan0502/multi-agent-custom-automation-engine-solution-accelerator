@@ -19,14 +19,12 @@ class ProductAgent(BaseAgent):
 
     def __init__(
         self,
-        kernel: sk.Kernel,
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
         tools: Optional[List[KernelFunction]] = None,
         system_message: Optional[str] = None,
         agent_name: str = AgentType.PRODUCT.value,
-        config_path: Optional[str] = None,
         client=None,
         definition=None,
     ) -> None:
@@ -59,7 +57,6 @@ class ProductAgent(BaseAgent):
 
         super().__init__(
             agent_name=agent_name,
-            kernel=kernel,
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,

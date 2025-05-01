@@ -191,7 +191,6 @@ class AppConfig:
 
     async def create_azure_ai_agent(
         self,
-        kernel: Kernel,
         agent_name: str,
         instructions: str,
         tools: Optional[List[KernelFunction]] = None,
@@ -227,7 +226,6 @@ class AppConfig:
                 agent = AzureAIAgent(
                     client=project_client,
                     definition=existing_definition,
-                    kernel=kernel,
                     plugins=tools,
                 )
 
@@ -258,7 +256,6 @@ class AppConfig:
             agent = AzureAIAgent(
                 client=project_client,
                 definition=agent_definition,
-                kernel=kernel,
                 plugins=tools,
             )
 

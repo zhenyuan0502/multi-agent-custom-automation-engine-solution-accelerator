@@ -43,7 +43,6 @@ class PlannerAgent(BaseAgent):
 
     def __init__(
         self,
-        kernel: sk.Kernel,
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
@@ -59,7 +58,6 @@ class PlannerAgent(BaseAgent):
         """Initialize the Planner Agent.
 
         Args:
-            kernel: The semantic kernel instance
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
@@ -80,7 +78,6 @@ class PlannerAgent(BaseAgent):
         # Initialize the base agent
         super().__init__(
             agent_name=agent_name,
-            kernel=kernel,
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,
@@ -129,7 +126,6 @@ class PlannerAgent(BaseAgent):
             if not self._agent:
                 # Create the Azure AI Agent using AppConfig with string instructions
                 self._agent = await config.create_azure_ai_agent(
-                    kernel=self._kernel,
                     agent_name=self._agent_name,
                     instructions=instructions,  # Pass the formatted string, not an object
                     temperature=0.0,

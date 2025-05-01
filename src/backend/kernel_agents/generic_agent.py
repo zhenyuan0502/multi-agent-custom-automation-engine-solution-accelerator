@@ -14,7 +14,6 @@ class GenericAgent(BaseAgent):
 
     def __init__(
         self,
-        kernel: sk.Kernel,
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
@@ -27,7 +26,6 @@ class GenericAgent(BaseAgent):
         """Initialize the Generic Agent.
 
         Args:
-            kernel: The semantic kernel instance
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
@@ -55,7 +53,6 @@ class GenericAgent(BaseAgent):
         # Call the parent initializer
         super().__init__(
             agent_name=agent_name,
-            kernel=kernel,
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,
