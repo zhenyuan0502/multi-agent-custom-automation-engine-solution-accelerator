@@ -158,7 +158,6 @@ class AgentFactory:
 
         # Build the agent definition (functions schema)
         definition = None
-        client = None
 
         try:
             if client is None:
