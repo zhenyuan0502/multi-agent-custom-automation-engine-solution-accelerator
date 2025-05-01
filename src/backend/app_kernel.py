@@ -40,6 +40,7 @@ from utils_kernel import initialize_runtime_and_context, get_agents, rai_success
 from event_utils import track_event_if_configured
 from models.messages_kernel import AgentType
 from kernel_agents.agent_factory import AgentFactory
+from app_config import config
 
 # # Check if the Application Insights Instrumentation Key is set in the environment variables
 # instrumentation_key = os.getenv("APPLICATIONINSIGHTS_INSTRUMENTATION_KEY")
@@ -267,15 +268,24 @@ async def human_feedback_endpoint(human_feedback: HumanFeedback, request: Reques
     except Exception as client_exc:
         logging.error(f"Error creating AIProjectClient: {client_exc}")
 
-    agents = await AgentFactory.create_all_agents(
+    human_agent = await AgentFactory.create_agent(
+        agent_type=AgentType.HUMAN.value,
         session_id=human_feedback.session_id,
         user_id=user_id,
         memory_store=memory_store,
         client=client,
     )
 
-    # Send the feedback to the human agent
-    human_agent = agents[AgentType.HUMAN.value]
+    if human_agent is None:
+        track_event_if_configured(
+            "AgentNotFound",
+            {
+                "status": "Agent not found",
+                "session_id": human_feedback.session_id,
+                "step_id": human_feedback.step_id,
+            },
+        )
+        raise HTTPException(status_code=404, detail="Agent not found")
 
     # Use the human agent to handle the feedback
     await human_agent.handle_human_feedback(human_feedback=human_feedback)
@@ -363,15 +373,25 @@ async def human_clarification_endpoint(
         client = config.get_ai_project_client()
     except Exception as client_exc:
         logging.error(f"Error creating AIProjectClient: {client_exc}")
-    agents = await AgentFactory.create_all_agents(
+
+    human_agent = await AgentFactory.create_agent(
+        agent_type=AgentType.HUMAN.value,
         session_id=human_clarification.session_id,
         user_id=user_id,
         memory_store=memory_store,
         client=client,
     )
 
-    # Send the feedback to the human agent
-    human_agent = agents[AgentType.HUMAN.value]
+    if human_agent is None:
+        track_event_if_configured(
+            "AgentNotFound",
+            {
+                "status": "Agent not found",
+                "session_id": human_clarification.session_id,
+                "step_id": human_clarification.step_id,
+            },
+        )
+        raise HTTPException(status_code=404, detail="Agent not found")
 
     # Use the human agent to handle the feedback
     await human_agent.handle_human_clarification(
