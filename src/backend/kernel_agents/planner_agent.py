@@ -43,7 +43,6 @@ class PlannerAgent(BaseAgent):
 
     def __init__(
         self,
-        kernel: sk.Kernel,
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
@@ -59,7 +58,6 @@ class PlannerAgent(BaseAgent):
         """Initialize the Planner Agent.
 
         Args:
-            kernel: The semantic kernel instance
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
@@ -80,7 +78,6 @@ class PlannerAgent(BaseAgent):
         # Initialize the base agent
         super().__init__(
             agent_name=agent_name,
-            kernel=kernel,
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,
@@ -102,10 +99,6 @@ class PlannerAgent(BaseAgent):
         ]
         self._agent_tools_list = agent_tools_list or []
         self._agent_instances = agent_instances or {}
-
-        # Create the Azure AI Agent for planning operations
-        # This will be initialized in async_init
-        self._azure_ai_agent = None
 
     @staticmethod
     def default_system_message(agent_name=None) -> str:
@@ -130,22 +123,21 @@ class PlannerAgent(BaseAgent):
 
             # Get the agent template - defined in function to allow for easy updates
             instructions = self._get_template()
-
-            # Create the Azure AI Agent using AppConfig with string instructions
-            self._azure_ai_agent = await config.create_azure_ai_agent(
-                kernel=self._kernel,
-                agent_name=self._agent_name,
-                instructions=instructions,  # Pass the formatted string, not an object
-                temperature=0.0,
-                response_format=ResponseFormatJsonSchemaType(
-                    json_schema=ResponseFormatJsonSchema(
-                        name=PlannerResponsePlan.__name__,
-                        description=f"respond with {PlannerResponsePlan.__name__.lower()}",
-                        schema=PlannerResponsePlan.model_json_schema(),
-                    )
-                ),
-            )
-            logging.info("Successfully created Azure AI Agent for PlannerAgent")
+            if not self._agent:
+                # Create the Azure AI Agent using AppConfig with string instructions
+                self._agent = await config.create_azure_ai_agent(
+                    agent_name=self._agent_name,
+                    instructions=instructions,  # Pass the formatted string, not an object
+                    temperature=0.0,
+                    response_format=ResponseFormatJsonSchemaType(
+                        json_schema=ResponseFormatJsonSchema(
+                            name=PlannerResponsePlan.__name__,
+                            description=f"respond with {PlannerResponsePlan.__name__.lower()}",
+                            schema=PlannerResponsePlan.model_json_schema(),
+                        )
+                    ),
+                )
+                logging.info("Successfully created Azure AI Agent for PlannerAgent")
             return True
         except Exception as e:
             logging.error(f"Failed to create Azure AI Agent for PlannerAgent: {e}")
@@ -300,22 +292,16 @@ class PlannerAgent(BaseAgent):
         """
         try:
             # Generate the instruction for the LLM
-            logging.info("Generating instruction for the LLM")
-            logging.info(f"Input: {input_task}")
-            logging.info(f"Available agents: {self._available_agents}")
 
             # Get template variables as a dictionary
             args = self._generate_args(input_task.description)
-            logging.info(f"Generated args: {args}")
-            logging.info(f"Creating plan for task: '{input_task.description}'")
-            logging.info(f"Using available agents: {self._available_agents}")
 
             # Use the Azure AI Agent instead of direct function invocation
-            if self._azure_ai_agent is None:
+            if self._agent is None:
                 # Initialize the agent if it's not already done
                 await self.async_init()
 
-            if self._azure_ai_agent is None:
+            if self._agent is None:
                 raise RuntimeError("Failed to initialize Azure AI Agent for planning")
 
             # Log detailed information about the instruction being sent
@@ -336,7 +322,7 @@ class PlannerAgent(BaseAgent):
             # )
             thread = None
             # thread = self.client.agents.create_thread(thread_id=input_task.session_id)
-            async_generator = self._azure_ai_agent.invoke(
+            async_generator = self._agent.invoke(
                 arguments=kernel_args,
                 settings={
                     "temperature": 0.0,  # Keep temperature low for consistent planning
@@ -365,75 +351,17 @@ class PlannerAgent(BaseAgent):
             # Try various parsing approaches in sequence
             try:
                 # 1. First attempt: Try to parse the raw response directly
-                try:
-                    parsed_result = PlannerResponsePlan.parse_raw(response_content)
-                    logging.info("Successfully parsed response with direct parsing")
-                    logging.info(f"\n\n\n\n")
-                    logging.info(f"Parsed result: {parsed_result}")
-                    logging.info(f"\n\n\n\n")
-                except Exception as parse_error:
-                    logging.warning(f"Failed direct parse: {parse_error}")
-
-                    # 2. Try to extract JSON from markdown code blocks
-                    json_match = re.search(
-                        r"```(?:json)?\s*(.*?)\s*```", response_content, re.DOTALL
-                    )
-                    if json_match:
-                        json_content = json_match.group(1)
-                        logging.info(f"Found JSON in code block, attempting to parse")
-                        try:
-                            parsed_result = PlannerResponsePlan.parse_raw(json_content)
-                            logging.info("Successfully parsed JSON from code block")
-                        except Exception as code_block_error:
-                            logging.warning(
-                                f"Failed to parse JSON in code block: {code_block_error}"
-                            )
-                            # Try parsing as dict first, then convert to model
-                            try:
-                                json_dict = json.loads(json_content)
-                                parsed_result = PlannerResponsePlan.parse_obj(json_dict)
-                                logging.info(
-                                    "Successfully parsed JSON dict from code block"
-                                )
-                            except Exception as dict_error:
-                                logging.warning(
-                                    f"Failed to parse JSON dict from code block: {dict_error}"
-                                )
-
-                    # 3. Look for patterns like { ... } that might contain JSON
-                    if parsed_result is None:
-                        json_pattern = r'\{.*?"initial_goal".*?"steps".*?\}'
-                        alt_match = re.search(json_pattern, response_content, re.DOTALL)
-                        if alt_match:
-                            potential_json = alt_match.group(0)
-                            logging.info(
-                                f"Found potential JSON pattern in text, attempting to parse"
-                            )
-                            try:
-                                json_dict = json.loads(potential_json)
-                                parsed_result = PlannerResponsePlan.parse_obj(json_dict)
-                                logging.info(
-                                    "Successfully parsed JSON using regex pattern extraction"
-                                )
-                            except Exception as pattern_error:
-                                logging.warning(
-                                    f"Failed to parse JSON pattern: {pattern_error}"
-                                )
-
+                parsed_result = PlannerResponsePlan.parse_raw(response_content)
                 if parsed_result is None:
                     # If all parsing attempts fail, create a fallback plan from the text content
-                    logging.warning(
-                        "All JSON parsing attempts failed, creating fallback plan from text"
+                    logging.info(
+                        "All parsing attempts failed, creating fallback plan from text content"
                     )
-                    return await self._create_fallback_plan_from_text(
-                        input_task, response_content
-                    )
+                    raise ValueError("Failed to parse JSON response")
 
             except Exception as parsing_exception:
                 logging.exception(f"Error during parsing attempts: {parsing_exception}")
-                return await self._create_fallback_plan_from_text(
-                    input_task, response_content
-                )
+                raise ValueError("Failed to parse JSON response")
 
             # At this point, we have a valid parsed_result
 
@@ -578,108 +506,6 @@ class PlannerAgent(BaseAgent):
                 )
 
             return dummy_plan, [dummy_step, clarification_step]
-
-    async def _create_fallback_plan_from_text(
-        self, input_task: InputTask, text_content: str
-    ) -> Tuple[Plan, List[Step]]:
-        """Create a plan from unstructured text when JSON parsing fails.
-
-        Args:
-            input_task: The input task
-            text_content: The text content from the LLM
-
-        Returns:
-            Tuple containing the created plan and list of steps
-        """
-        logging.info("Creating fallback plan from text content")
-
-        # Extract goal from the text (first line or use input task description)
-        goal_match = re.search(
-            r"(?:Goal|Initial Goal|Plan):\s*(.+?)(?:\n|$)", text_content
-        )
-        goal = goal_match.group(1).strip() if goal_match else input_task.description
-
-        # Create the plan
-        plan = Plan(
-            id=str(uuid.uuid4()),
-            session_id=input_task.session_id,
-            user_id=self._user_id,
-            initial_goal=goal,
-            overall_status=PlanStatus.in_progress,
-            summary=f"Plan created from {input_task.description}",
-        )
-
-        # Store the plan
-        await self._memory_store.add_plan(plan)
-
-        # Parse steps using regex
-        step_pattern = re.compile(
-            r"(?:Step|)\s*(\d+)[:.]\s*\*?\*?(?:Agent|):\s*\*?([^:*\n]+)\*?[:\s]*(.+?)(?=(?:Step|)\s*\d+[:.]\s*|$)",
-            re.DOTALL,
-        )
-        matches = step_pattern.findall(text_content)
-
-        if not matches:
-            # Fallback to simpler pattern
-            step_pattern = re.compile(
-                r"(\d+)[.:\)]\s*([^:]*?):\s*(.*?)(?=\d+[.:\)]|$)", re.DOTALL
-            )
-            matches = step_pattern.findall(text_content)
-
-        # If still no matches, look for bullet points or numbered lists
-        if not matches:
-            step_pattern = re.compile(
-                r"[•\-*]\s*([^:]*?):\s*(.*?)(?=[•\-*]|$)", re.DOTALL
-            )
-            bullet_matches = step_pattern.findall(text_content)
-            if bullet_matches:
-                # Convert bullet matches to our expected format (number, agent, action)
-                matches = []
-                for i, (agent_text, action) in enumerate(bullet_matches, 1):
-                    matches.append((str(i), agent_text.strip(), action.strip()))
-
-        steps = []
-        # If we found no steps at all, create at least one generic step
-        if not matches:
-            generic_step = Step(
-                id=str(uuid.uuid4()),
-                plan_id=plan.id,
-                session_id=input_task.session_id,
-                user_id=self._user_id,
-                action=f"Process the request: {input_task.description}",
-                agent="GenericAgent",
-                status=StepStatus.planned,
-                human_approval_status=HumanFeedbackStatus.requested,
-            )
-            await self._memory_store.add_step(generic_step)
-            steps.append(generic_step)
-        else:
-            for match in matches:
-                number = match[0].strip()
-                agent_text = match[1].strip()
-                action = match[2].strip()
-
-                # Clean up agent name
-                agent = re.sub(r"\s+", "", agent_text)
-                if not agent or agent not in self._available_agents:
-                    agent = "GenericAgent"  # Default to GenericAgent if not recognized
-
-                # Create and store the step
-                step = Step(
-                    id=str(uuid.uuid4()),
-                    plan_id=plan.id,
-                    session_id=input_task.session_id,
-                    user_id=self._user_id,
-                    action=action,
-                    agent=agent,
-                    status=StepStatus.planned,
-                    human_approval_status=HumanFeedbackStatus.requested,
-                )
-
-                await self._memory_store.add_step(step)
-                steps.append(step)
-
-        return plan, steps
 
     def _generate_args(self, objective: str) -> any:
         """Generate instruction for the LLM to create a plan.
@@ -865,6 +691,9 @@ class PlannerAgent(BaseAgent):
                             )
 
         # Convert the tools list to a string representation
+        logging.info(f"Tools list: {len(tools_list)}")
+        logging
+
         tools_str = str(tools_list)
 
         # Return a dictionary with template variables

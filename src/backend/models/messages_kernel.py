@@ -194,6 +194,26 @@ class Step(BaseDataModel):
     updated_action: Optional[str] = None
 
 
+class ThreadIdAgent(BaseDataModel):
+    """Represents an individual thread_id."""
+
+    data_type: Literal["thread"] = Field("thread", Literal=True)
+    session_id: str  # Partition key
+    user_id: str
+    thread_id: str
+
+
+class AzureIdAgent(BaseDataModel):
+    """Represents an individual thread_id."""
+
+    data_type: Literal["agent"] = Field("agent", Literal=True)
+    session_id: str  # Partition key
+    user_id: str
+    action: str
+    agent: AgentType
+    agent_id: str
+
+
 class PlanWithSteps(Plan):
     """Plan model that includes the associated steps."""
 

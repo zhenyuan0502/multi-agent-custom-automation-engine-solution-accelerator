@@ -19,13 +19,16 @@ from semantic_kernel.contents import ChatMessageContent, ChatHistory, AuthorRole
 from app_config import config
 from models.messages_kernel import BaseDataModel, Plan, Session, Step, AgentMessage
 
+
 # Add custom JSON encoder class for datetime objects
 class DateTimeEncoder(json.JSONEncoder):
     """Custom JSON encoder for handling datetime objects."""
+
     def default(self, obj):
         if isinstance(obj, datetime.datetime):
             return obj.isoformat()
         return super().default(obj)
+
 
 class CosmosMemoryContext(MemoryStoreBase):
     """A buffered chat completion context that saves messages and data models to Cosmos DB."""
@@ -43,19 +46,19 @@ class CosmosMemoryContext(MemoryStoreBase):
         session_id: str,
         user_id: str,
         cosmos_container: str = None,
-        cosmos_endpoint: str = None, 
+        cosmos_endpoint: str = None,
         cosmos_database: str = None,
         buffer_size: int = 100,
         initial_messages: Optional[List[ChatMessageContent]] = None,
     ) -> None:
         self._buffer_size = buffer_size
         self._messages = initial_messages or []
-        
+
         # Use values from AppConfig instance if not provided
         self._cosmos_container = cosmos_container or config.COSMOSDB_CONTAINER
         self._cosmos_endpoint = cosmos_endpoint or config.COSMOSDB_ENDPOINT
         self._cosmos_database = cosmos_database or config.COSMOSDB_DATABASE
-        
+
         self._database = None
         self._container = None
         self.session_id = session_id
@@ -70,11 +73,12 @@ class CosmosMemoryContext(MemoryStoreBase):
             if not self._database:
                 # Create Cosmos client
                 cosmos_client = CosmosClient(
-                    self._cosmos_endpoint, 
-                    credential=DefaultAzureCredential()
+                    self._cosmos_endpoint, credential=DefaultAzureCredential()
                 )
-                self._database = cosmos_client.get_database_client(self._cosmos_database)
-                
+                self._database = cosmos_client.get_database_client(
+                    self._cosmos_database
+                )
+
             # Set up CosmosDB container
             self._container = await self._database.create_container_if_not_exists(
                 id=self._cosmos_container,
@@ -82,10 +86,12 @@ class CosmosMemoryContext(MemoryStoreBase):
             )
             logging.info("Successfully connected to CosmosDB")
         except Exception as e:
-            logging.error(f"Failed to initialize CosmosDB container: {e}. Continuing without CosmosDB for testing.")
+            logging.error(
+                f"Failed to initialize CosmosDB container: {e}. Continuing without CosmosDB for testing."
+            )
             # Do not raise to prevent test failures
             self._container = None
-        
+
         self._initialized.set()
 
     # Helper method for awaiting initialization
@@ -94,7 +100,7 @@ class CosmosMemoryContext(MemoryStoreBase):
         if not self._initialized.is_set():
             # If the initialization hasn't been done, do it now
             await self.initialize()
-            
+
         # If after initialization the container is still None, that means initialization failed
         if self._container is None:
             # Re-attempt initialization once in case the previous attempt failed
@@ -102,10 +108,12 @@ class CosmosMemoryContext(MemoryStoreBase):
                 await self.initialize()
             except Exception as e:
                 logging.error(f"Re-initialization attempt failed: {e}")
-                
+
             # If still not initialized, raise error
             if self._container is None:
-                raise RuntimeError("CosmosDB container is not available. Initialization failed.")
+                raise RuntimeError(
+                    "CosmosDB container is not available. Initialization failed."
+                )
 
     async def add_item(self, item: BaseDataModel) -> None:
         """Add a data model item to Cosmos DB."""
@@ -114,12 +122,12 @@ class CosmosMemoryContext(MemoryStoreBase):
         try:
             # Convert the model to a dict
             document = item.model_dump()
-            
+
             # Handle datetime objects by converting them to ISO format strings
             for key, value in list(document.items()):
                 if isinstance(value, datetime.datetime):
                     document[key] = value.isoformat()
-            
+
             # Now create the item with the serialized datetime values
             await self._container.create_item(body=document)
             logging.info(f"Item added to Cosmos DB - {document['id']}")
@@ -134,12 +142,12 @@ class CosmosMemoryContext(MemoryStoreBase):
         try:
             # Convert the model to a dict
             document = item.model_dump()
-            
+
             # Handle datetime objects by converting them to ISO format strings
             for key, value in list(document.items()):
                 if isinstance(value, datetime.datetime):
                     document[key] = value.isoformat()
-            
+
             # Now upsert the item with the serialized datetime values
             await self._container.upsert_item(body=document)
         except Exception as e:
@@ -223,12 +231,23 @@ class CosmosMemoryContext(MemoryStoreBase):
         plans = await self.query_items(query, parameters, Plan)
         return plans[0] if plans else None
 
+    async def get_thread_by_session(self, session_id: str) -> Optional[Any]:
+        """Retrieve a plan associated with a session."""
+        query = "SELECT * FROM c WHERE c.session_id=@session_id AND c.user_id=@user_id AND c.data_type=@data_type"
+        parameters = [
+            {"name": "@session_id", "value": session_id},
+            {"name": "@data_type", "value": "thread"},
+            {"name": "@user_id", "value": self.user_id},
+        ]
+        threads = await self.query_items(query, parameters, Plan)
+        return threads[0] if threads else None
+
     async def get_plan(self, plan_id: str) -> Optional[Plan]:
         """Retrieve a plan by its ID.
-        
+
         Args:
             plan_id: The ID of the plan to retrieve
-            
+
         Returns:
             The Plan object or None if not found
         """
@@ -266,13 +285,15 @@ class CosmosMemoryContext(MemoryStoreBase):
         steps = await self.query_items(query, parameters, Step)
         return steps
 
-    async def get_steps_for_plan(self, plan_id: str, session_id: Optional[str] = None) -> List[Step]:
+    async def get_steps_for_plan(
+        self, plan_id: str, session_id: Optional[str] = None
+    ) -> List[Step]:
         """Retrieve all steps associated with a plan.
-        
+
         Args:
             plan_id: The ID of the plan to retrieve steps for
             session_id: Optional session ID if known
-            
+
         Returns:
             List of Step objects
         """
@@ -285,18 +306,20 @@ class CosmosMemoryContext(MemoryStoreBase):
 
     async def add_agent_message(self, message: AgentMessage) -> None:
         """Add an agent message to Cosmos DB.
-        
+
         Args:
             message: The AgentMessage to add
         """
         await self.add_item(message)
 
-    async def get_agent_messages_by_session(self, session_id: str) -> List[AgentMessage]:
+    async def get_agent_messages_by_session(
+        self, session_id: str
+    ) -> List[AgentMessage]:
         """Retrieve agent messages for a specific session.
-        
+
         Args:
             session_id: The session ID to get messages for
-            
+
         Returns:
             List of AgentMessage objects
         """
@@ -317,7 +340,7 @@ class CosmosMemoryContext(MemoryStoreBase):
             # Ensure buffer size is maintained
             while len(self._messages) > self._buffer_size:
                 self._messages.pop(0)
-                
+
             message_dict = {
                 "id": str(uuid.uuid4()),
                 "session_id": self.session_id,
@@ -326,7 +349,7 @@ class CosmosMemoryContext(MemoryStoreBase):
                 "content": {
                     "role": message.role.value,
                     "content": message.content,
-                    "metadata": message.metadata
+                    "metadata": message.metadata,
                 },
                 "source": message.metadata.get("source", ""),
             }
@@ -366,11 +389,11 @@ class CosmosMemoryContext(MemoryStoreBase):
                     chat_role = AuthorRole.SYSTEM
                 elif role == "tool":  # Equivalent to FunctionExecutionResultMessage
                     chat_role = AuthorRole.TOOL
-                
+
                 message = ChatMessageContent(
                     role=chat_role,
                     content=content.get("content", ""),
-                    metadata=content.get("metadata", {})
+                    metadata=content.get("metadata", {}),
                 )
                 messages.append(message)
             return messages
@@ -384,7 +407,7 @@ class CosmosMemoryContext(MemoryStoreBase):
         for message in self._messages:
             history.add_message(message)
         return history
-    
+
     async def save_chat_history(self, history: ChatHistory) -> None:
         """Save a ChatHistory object to the store."""
         for message in history.messages:
@@ -457,7 +480,7 @@ class CosmosMemoryContext(MemoryStoreBase):
             query = "SELECT * FROM c WHERE c.user_id=@user_id OFFSET 0 LIMIT @limit"
             parameters = [
                 {"name": "@user_id", "value": self.user_id},
-                {"name": "@limit", "value": 100}
+                {"name": "@limit", "value": 100},
             ]
             items = self._container.query_items(query=query, parameters=parameters)
             async for item in items:
@@ -499,7 +522,7 @@ class CosmosMemoryContext(MemoryStoreBase):
     async def get_collections(self) -> List[str]:
         """Get all collections."""
         await self.ensure_initialized()
-        
+
         try:
             query = """
                 SELECT DISTINCT c.collection 
@@ -507,7 +530,7 @@ class CosmosMemoryContext(MemoryStoreBase):
                 WHERE c.data_type = 'memory' AND c.session_id = @session_id
             """
             parameters = [{"name": "@session_id", "value": self.session_id}]
-            
+
             items = self._container.query_items(query=query, parameters=parameters)
             collections = []
             async for item in items:
@@ -526,7 +549,7 @@ class CosmosMemoryContext(MemoryStoreBase):
     async def delete_collection(self, collection_name: str) -> None:
         """Delete a collection."""
         await self.ensure_initialized()
-        
+
         try:
             query = """
                 SELECT c.id, c.session_id
@@ -535,14 +558,13 @@ class CosmosMemoryContext(MemoryStoreBase):
             """
             parameters = [
                 {"name": "@collection", "value": collection_name},
-                {"name": "@session_id", "value": self.session_id}
+                {"name": "@session_id", "value": self.session_id},
             ]
-            
+
             items = self._container.query_items(query=query, parameters=parameters)
             async for item in items:
                 await self._container.delete_item(
-                    item=item["id"],
-                    partition_key=item["session_id"]
+                    item=item["id"], partition_key=item["session_id"]
                 )
         except Exception as e:
             logging.exception(f"Failed to delete collection from Cosmos DB: {e}")
@@ -559,14 +581,18 @@ class CosmosMemoryContext(MemoryStoreBase):
             "description": record.description,
             "external_source_name": record.external_source_name,
             "additional_metadata": record.additional_metadata,
-            "embedding": record.embedding.tolist() if record.embedding is not None else None,
-            "key": record.key
+            "embedding": (
+                record.embedding.tolist() if record.embedding is not None else None
+            ),
+            "key": record.key,
         }
-        
+
         await self._container.upsert_item(body=memory_dict)
         return memory_dict["id"]
 
-    async def get_memory_record(self, collection: str, key: str, with_embedding: bool = False) -> Optional[MemoryRecord]:
+    async def get_memory_record(
+        self, collection: str, key: str, with_embedding: bool = False
+    ) -> Optional[MemoryRecord]:
         """Retrieve a memory record."""
         query = """
             SELECT * FROM c 
@@ -576,9 +602,9 @@ class CosmosMemoryContext(MemoryStoreBase):
             {"name": "@collection", "value": collection},
             {"name": "@key", "value": key},
             {"name": "@session_id", "value": self.session_id},
-            {"name": "@data_type", "value": "memory"}
+            {"name": "@data_type", "value": "memory"},
         ]
-        
+
         items = self._container.query_items(query=query, parameters=parameters)
         async for item in items:
             return MemoryRecord(
@@ -587,8 +613,12 @@ class CosmosMemoryContext(MemoryStoreBase):
                 description=item["description"],
                 external_source_name=item["external_source_name"],
                 additional_metadata=item["additional_metadata"],
-                embedding=np.array(item["embedding"]) if with_embedding and "embedding" in item else None,
-                key=item["key"]
+                embedding=(
+                    np.array(item["embedding"])
+                    if with_embedding and "embedding" in item
+                    else None
+                ),
+                key=item["key"],
             )
         return None
 
@@ -602,36 +632,38 @@ class CosmosMemoryContext(MemoryStoreBase):
             {"name": "@collection", "value": collection},
             {"name": "@key", "value": key},
             {"name": "@session_id", "value": self.session_id},
-            {"name": "@data_type", "value": "memory"}
+            {"name": "@data_type", "value": "memory"},
         ]
-        
+
         items = self._container.query_items(query=query, parameters=parameters)
         async for item in items:
-            await self._container.delete_item(item=item["id"], partition_key=self.session_id)
+            await self._container.delete_item(
+                item=item["id"], partition_key=self.session_id
+            )
 
     async def upsert_async(self, collection_name: str, record: Dict[str, Any]) -> str:
         """Helper method to insert documents directly."""
         await self.ensure_initialized()
-        
+
         try:
             if "session_id" not in record:
                 record["session_id"] = self.session_id
-                
+
             if "id" not in record:
                 record["id"] = str(uuid.uuid4())
-                
+
             await self._container.upsert_item(body=record)
             return record["id"]
         except Exception as e:
             logging.exception(f"Failed to upsert item to Cosmos DB: {e}")
             return ""
-            
+
     async def get_memory_records(
         self, collection: str, limit: int = 1000, with_embeddings: bool = False
     ) -> List[MemoryRecord]:
         """Get memory records from a collection."""
         await self.ensure_initialized()
-        
+
         try:
             query = """
                 SELECT *
@@ -645,16 +677,16 @@ class CosmosMemoryContext(MemoryStoreBase):
             parameters = [
                 {"name": "@collection", "value": collection},
                 {"name": "@session_id", "value": self.session_id},
-                {"name": "@limit", "value": limit}
+                {"name": "@limit", "value": limit},
             ]
-            
+
             items = self._container.query_items(query=query, parameters=parameters)
             records = []
             async for item in items:
                 embedding = None
                 if with_embeddings and "embedding" in item and item["embedding"]:
                     embedding = np.array(item["embedding"])
-                    
+
                 record = MemoryRecord(
                     id=item["id"],
                     key=item.get("key", ""),
@@ -662,7 +694,7 @@ class CosmosMemoryContext(MemoryStoreBase):
                     embedding=embedding,
                     description=item.get("description", ""),
                     additional_metadata=item.get("additional_metadata", ""),
-                    external_source_name=item.get("external_source_name", "")
+                    external_source_name=item.get("external_source_name", ""),
                 )
                 records.append(record)
             return records
@@ -674,7 +706,9 @@ class CosmosMemoryContext(MemoryStoreBase):
         """Upsert a memory record into the store."""
         return await self.upsert_memory_record(collection_name, record)
 
-    async def upsert_batch(self, collection_name: str, records: List[MemoryRecord]) -> List[str]:
+    async def upsert_batch(
+        self, collection_name: str, records: List[MemoryRecord]
+    ) -> List[str]:
         """Upsert a batch of memory records into the store."""
         result_ids = []
         for record in records:
@@ -682,11 +716,15 @@ class CosmosMemoryContext(MemoryStoreBase):
             result_ids.append(record_id)
         return result_ids
 
-    async def get(self, collection_name: str, key: str, with_embedding: bool = False) -> MemoryRecord:
+    async def get(
+        self, collection_name: str, key: str, with_embedding: bool = False
+    ) -> MemoryRecord:
         """Get a memory record from the store."""
         return await self.get_memory_record(collection_name, key, with_embedding)
 
-    async def get_batch(self, collection_name: str, keys: List[str], with_embeddings: bool = False) -> List[MemoryRecord]:
+    async def get_batch(
+        self, collection_name: str, keys: List[str], with_embeddings: bool = False
+    ) -> List[MemoryRecord]:
         """Get a batch of memory records from the store."""
         results = []
         for key in keys:
@@ -705,49 +743,47 @@ class CosmosMemoryContext(MemoryStoreBase):
             await self.remove_memory_record(collection_name, key)
 
     async def get_nearest_match(
-        self, 
-        collection_name: str, 
-        embedding: np.ndarray, 
-        limit: int = 1, 
-        min_relevance_score: float = 0.0, 
-        with_embeddings: bool = False
+        self,
+        collection_name: str,
+        embedding: np.ndarray,
+        limit: int = 1,
+        min_relevance_score: float = 0.0,
+        with_embeddings: bool = False,
     ) -> Tuple[MemoryRecord, float]:
         """Get the nearest match to the given embedding."""
         matches = await self.get_nearest_matches(
-            collection_name, 
-            embedding, 
-            limit, 
-            min_relevance_score, 
-            with_embeddings
+            collection_name, embedding, limit, min_relevance_score, with_embeddings
         )
         return matches[0] if matches else (None, 0.0)
 
     async def get_nearest_matches(
-        self, 
-        collection_name: str, 
-        embedding: np.ndarray, 
-        limit: int = 1, 
-        min_relevance_score: float = 0.0, 
-        with_embeddings: bool = False
+        self,
+        collection_name: str,
+        embedding: np.ndarray,
+        limit: int = 1,
+        min_relevance_score: float = 0.0,
+        with_embeddings: bool = False,
     ) -> List[Tuple[MemoryRecord, float]]:
         """Get the nearest matches to the given embedding."""
         await self.ensure_initialized()
-        
+
         try:
-            records = await self.get_memory_records(collection_name, limit=100, with_embeddings=True)
-            
+            records = await self.get_memory_records(
+                collection_name, limit=100, with_embeddings=True
+            )
+
             results = []
             for record in records:
                 if record.embedding is not None:
                     similarity = np.dot(embedding, record.embedding) / (
                         np.linalg.norm(embedding) * np.linalg.norm(record.embedding)
                     )
-                    
+
                     if similarity >= min_relevance_score:
                         if not with_embeddings:
                             record.embedding = None
                         results.append((record, float(similarity)))
-            
+
             results.sort(key=lambda x: x[1], reverse=True)
             return results[:limit]
         except Exception as e:

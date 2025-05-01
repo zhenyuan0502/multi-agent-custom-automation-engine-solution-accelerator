@@ -10,26 +10,6 @@ from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.functions.kernel_function_decorator import kernel_function
 from semantic_kernel.agents import AzureAIAgentThread
 
-# Updated imports for compatibility
-try:
-    # Try importing from newer structure first
-    from semantic_kernel.contents import ChatHistory, ChatMessageContent
-except ImportError:
-    # Fall back to older structure for compatibility
-    class ChatMessageContent:
-        """Compatibility class for older SK versions."""
-
-        def __init__(self, role="", content="", name=None):
-            self.role = role
-            self.content = content
-            self.name = name
-
-    class ChatHistory:
-        """Compatibility class for older SK versions."""
-
-        def __init__(self):
-            self.messages = []
-
 
 # Import the new AppConfig instance
 from app_config import config
@@ -53,7 +33,6 @@ class BaseAgent(AzureAIAgent):
     def __init__(
         self,
         agent_name: str,
-        kernel: sk.Kernel,
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
@@ -66,7 +45,6 @@ class BaseAgent(AzureAIAgent):
 
         Args:
             agent_name: The name of the agent
-            kernel: The semantic kernel instance
             session_id: The session ID
             user_id: The user ID
             memory_store: The memory context for storing agent state
@@ -82,7 +60,6 @@ class BaseAgent(AzureAIAgent):
 
         # Call AzureAIAgent constructor with required client and definition
         super().__init__(
-            kernel=kernel,
             deployment_name=None,  # Set as needed
             plugins=tools,  # Use the loaded plugins,
             endpoint=None,  # Set as needed
@@ -96,7 +73,6 @@ class BaseAgent(AzureAIAgent):
 
         # Store instance variables
         self._agent_name = agent_name
-        self._kernel = kernel
         self._session_id = session_id
         self._user_id = user_id
         self._memory_store = memory_store
@@ -128,12 +104,14 @@ class BaseAgent(AzureAIAgent):
         """
         logging.info(f"Initializing agent: {self._agent_name}")
         # Create Azure AI Agent or fallback
-        self._agent = await config.create_azure_ai_agent(
-            kernel=self._kernel,
-            agent_name=self._agent_name,
-            instructions=self._system_message,
-            tools=self._tools,
-        )
+        if not self._agent:
+            self._agent = await config.create_azure_ai_agent(
+                agent_name=self._agent_name,
+                instructions=self._system_message,
+                tools=self._tools,
+            )
+        else:
+            logging.info(f"Agent {self._agent_name} already initialized.")
         # Tools are registered with the kernel via get_tools_from_config
         return self
 
@@ -247,8 +225,6 @@ class BaseAgent(AzureAIAgent):
                 status=StepStatus.failed,
             )
             return response.json()
-
-        logging.info(f"Task completed: {response_content}")
 
         # Update step status
         step.status = StepStatus.completed

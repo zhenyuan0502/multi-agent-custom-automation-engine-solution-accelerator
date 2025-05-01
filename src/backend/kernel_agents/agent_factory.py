@@ -91,7 +91,6 @@ class AgentFactory:
         user_id: str,
         temperature: float = 0.0,
         memory_store: Optional[CosmosMemoryContext] = None,
-        kernel: Optional[Kernel] = None,
         system_message: Optional[str] = None,
         response_format: Optional[Any] = None,
         **kwargs,
@@ -129,6 +128,9 @@ class AgentFactory:
             session_id in cls._agent_cache
             and agent_type in cls._agent_cache[session_id]
         ):
+            logger.info(
+                f"Returning cached agent instance for session {session_id} and agent type {agent_type}"
+            )
             return cls._agent_cache[session_id][agent_type]
 
         # Get the agent class
@@ -139,10 +141,6 @@ class AgentFactory:
         # Create memory store
         if memory_store is None:
             memory_store = CosmosMemoryContext(session_id, user_id)
-
-        # Create a kernel using the AppConfig instance
-        if kernel is None:
-            kernel = config.create_kernel()
 
         # Use default system message if none provided
         if system_message is None:
@@ -198,7 +196,6 @@ class AgentFactory:
                 k: v
                 for k, v in {
                     "agent_name": agent_type_str,
-                    "kernel": kernel,
                     "session_id": session_id,
                     "user_id": user_id,
                     "memory_store": memory_store,
@@ -211,13 +208,12 @@ class AgentFactory:
                 if k in valid_keys
             }
             agent = agent_class(**filtered_kwargs)
-            logger.info(f"[DEBUG] Agent object after instantiation: {agent}")
+
             # Initialize the agent asynchronously if it has async_init
             if hasattr(agent, "async_init") and inspect.iscoroutinefunction(
                 agent.async_init
             ):
                 init_result = await agent.async_init()
-                logger.info(f"[DEBUG] Result of agent.async_init(): {init_result}")
 
         except Exception as e:
             logger.error(
@@ -239,7 +235,6 @@ class AgentFactory:
         user_id: str,
         temperature: float = 0.0,
         memory_store: Optional[CosmosMemoryContext] = None,
-        kernel: Optional[Kernel] = None,
     ) -> Dict[AgentType, BaseAgent]:
         """Create all agent types for a session in a specific order.
 
@@ -282,7 +277,6 @@ class AgentFactory:
                 user_id=user_id,
                 temperature=temperature,
                 memory_store=memory_store,
-                kernel=kernel,
             )
 
         # Create agent name to instance mapping for the planner
@@ -302,7 +296,7 @@ class AgentFactory:
 
         # Phase 2: Create the planner agent with agent_instances
         planner_agent = await cls.create_agent(
-            agent_type=planner_agent_type,
+            agent_type=AgentType.PLANNER,
             session_id=session_id,
             user_id=user_id,
             temperature=temperature,
@@ -322,7 +316,7 @@ class AgentFactory:
 
         # Phase 3: Create group chat manager with all agents including the planner
         group_chat_manager = await cls.create_agent(
-            agent_type=group_chat_manager_type,
+            agent_type=AgentType.GROUP_CHAT_MANAGER,
             session_id=session_id,
             user_id=user_id,
             temperature=temperature,

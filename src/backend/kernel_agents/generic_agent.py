@@ -14,7 +14,6 @@ class GenericAgent(BaseAgent):
 
     def __init__(
         self,
-        kernel: sk.Kernel,
         session_id: str,
         user_id: str,
         memory_store: CosmosMemoryContext,
@@ -27,7 +26,6 @@ class GenericAgent(BaseAgent):
         """Initialize the Generic Agent.
 
         Args:
-            kernel: The semantic kernel instance
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
@@ -42,14 +40,8 @@ class GenericAgent(BaseAgent):
         if not tools:
             # Get tools directly from GenericTools class
             tools_dict = GenericTools.get_all_kernel_functions()
-            logging.info(
-                f"GenericAgent: Got tools_dict with {len(tools_dict)} functions: {list(tools_dict.keys())}"
-            )
 
             tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
-            logging.info(
-                f"GenericAgent: Created {len(tools)} KernelFunctions from tools_dict"
-            )
 
             # Use system message from config if not explicitly provided
             if not system_message:
@@ -61,7 +53,6 @@ class GenericAgent(BaseAgent):
         # Call the parent initializer
         super().__init__(
             agent_name=agent_name,
-            kernel=kernel,
             session_id=session_id,
             user_id=user_id,
             memory_store=memory_store,

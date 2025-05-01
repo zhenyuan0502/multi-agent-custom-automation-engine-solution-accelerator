@@ -183,7 +183,7 @@ class AppConfig:
             self._ai_project_client = AIProjectClient.from_connection_string(
                 credential=credential, conn_str=connection_string
             )
-            logging.info("Successfully created AIProjectClient using connection string")
+
             return self._ai_project_client
         except Exception as exc:
             logging.error("Failed to create AIProjectClient: %s", exc)
@@ -191,7 +191,6 @@ class AppConfig:
 
     async def create_azure_ai_agent(
         self,
-        kernel: Kernel,
         agent_name: str,
         instructions: str,
         tools: Optional[List[KernelFunction]] = None,
@@ -221,21 +220,15 @@ class AppConfig:
 
             # First try to get an existing agent with this name as assistant_id
             try:
-                logging.info(f"Trying to retrieve existing agent with ID: {agent_name}")
-                existing_definition = await project_client.agents.get_agent(agent_name)
-                logging.info(f"Found existing agent with ID: {agent_name}")
 
+                existing_definition = await project_client.agents.get_agent(agent_name)
                 # Create the agent instance directly with project_client and existing definition
                 agent = AzureAIAgent(
                     client=project_client,
                     definition=existing_definition,
-                    kernel=kernel,
                     plugins=tools,
                 )
 
-                logging.info(
-                    f"Successfully loaded existing Azure AI Agent for {agent_name}"
-                )
                 return agent
             except Exception as e:
                 # The Azure AI Projects SDK throws an exception when the agent doesn't exist
@@ -263,7 +256,6 @@ class AppConfig:
             agent = AzureAIAgent(
                 client=project_client,
                 definition=agent_definition,
-                kernel=kernel,
                 plugins=tools,
             )
 
