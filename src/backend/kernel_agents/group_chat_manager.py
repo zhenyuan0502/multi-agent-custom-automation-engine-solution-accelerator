@@ -198,7 +198,7 @@ class GroupChatManager(BaseAgent):
         )
         if plan.human_clarification_response:
             received_human_feedback_on_plan = (
-                plan.human_clarification_response
+                f"{plan.human_clarification_request}: {plan.human_clarification_response}"
                 + " This information may or may not be relevant to the step you are executing - it was feedback provided by the human user on the overall plan, which includes multiple steps, not just the one you are actioning now."
             )
         else:
@@ -314,6 +314,12 @@ class GroupChatManager(BaseAgent):
         formatted_string += "<conversation_history>Here is the conversation history so far for the current plan. This information may or may not be relevant to the step you have been asked to execute."
         formatted_string += f"The user's task was:\n{plan.summary}\n\n"
         formatted_string += (
+            f" human_clarification_request:\n{plan.human_clarification_request}\n\n"
+        )
+        formatted_string += (
+            f" human_clarification_response:\n{plan.human_clarification_response}\n\n"
+        )
+        formatted_string += (
             "The conversation between the previous agents so far is below:\n"
         )
 
@@ -323,7 +329,7 @@ class GroupChatManager(BaseAgent):
                 break
             formatted_string += f"Step {i}\n"
             formatted_string += f"{AgentType.GROUP_CHAT_MANAGER.value}: {step.action}\n"
-            formatted_string += f"{step.agent.name}: {step.agent_reply}\n"
+            formatted_string += f"{step.agent.value}: {step.agent_reply}\n"
         formatted_string += "<conversation_history \\>"
 
         logging.info(f"Formatted string: {formatted_string}")
