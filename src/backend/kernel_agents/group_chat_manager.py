@@ -54,11 +54,9 @@ class GroupChatManager(BaseAgent):
         """Initialize the GroupChatManager Agent.
 
         Args:
-            kernel: The semantic kernel instance
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
-            tools: Optional list of tools for this agent
             system_message: Optional system message for the agent
             agent_name: Optional name for the agent (defaults to "GroupChatManagerAgent")
             config_path: Optional path to the configuration file

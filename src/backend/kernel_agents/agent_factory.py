@@ -93,6 +93,7 @@ class AgentFactory:
         memory_store: Optional[CosmosMemoryContext] = None,
         system_message: Optional[str] = None,
         response_format: Optional[Any] = None,
+        client: Optional[Any] = None,
         **kwargs,
     ) -> BaseAgent:
         """Create an agent of the specified type.
@@ -160,7 +161,10 @@ class AgentFactory:
         client = None
 
         try:
-            client = config.get_ai_project_client()
+            if client is None:
+                # Create the AIProjectClient instance using the config
+                # This is a placeholder; replace with actual client creation logic
+                client = config.get_ai_project_client()
         except Exception as client_exc:
             logger.error(f"Error creating AIProjectClient: {client_exc}")
             raise

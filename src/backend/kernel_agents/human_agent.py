@@ -5,7 +5,6 @@ import semantic_kernel as sk
 from context.cosmos_memory_kernel import CosmosMemoryContext
 from event_utils import track_event_if_configured
 from kernel_agents.agent_base import BaseAgent
-from kernel_tools.human_tools import HumanTools
 from models.messages_kernel import (
     ActionRequest,
     AgentMessage,
@@ -40,7 +39,6 @@ class HumanAgent(BaseAgent):
         """Initialize the Human Agent.
 
         Args:
-            kernel: The semantic kernel instance
             session_id: The current session identifier
             user_id: The user identifier
             memory_store: The Cosmos memory context
@@ -51,15 +49,10 @@ class HumanAgent(BaseAgent):
             client: Optional client instance
             definition: Optional definition instance
         """
-        # Load configuration if tools not provided
-        if not tools:
-            # Get tools directly from HumanTools class
-            tools_dict = HumanTools.get_all_kernel_functions()
-            tools = [KernelFunction.from_method(func) for func in tools_dict.values()]
 
-            # Use system message from config if not explicitly provided
-            if not system_message:
-                system_message = self.default_system_message(agent_name)
+        # Use system message from config if not explicitly provided
+        if not system_message:
+            system_message = self.default_system_message(agent_name)
 
             # Use agent name from config if available
             agent_name = AgentType.HUMAN.value
@@ -74,11 +67,6 @@ class HumanAgent(BaseAgent):
             client=client,
             definition=definition,
         )
-
-    @property
-    def plugins(self):
-        """Get the plugins for the human agent."""
-        return HumanTools.get_all_kernel_functions()
 
     @staticmethod
     def default_system_message(agent_name=None) -> str:
