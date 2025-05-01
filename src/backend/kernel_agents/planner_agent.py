@@ -103,10 +103,6 @@ class PlannerAgent(BaseAgent):
         self._agent_tools_list = agent_tools_list or []
         self._agent_instances = agent_instances or {}
 
-        # Create the Azure AI Agent for planning operations
-        # This will be initialized in async_init
-        self._azure_ai_agent = None
-
     @staticmethod
     def default_system_message(agent_name=None) -> str:
         """Get the default system message for the agent.
@@ -130,22 +126,22 @@ class PlannerAgent(BaseAgent):
 
             # Get the agent template - defined in function to allow for easy updates
             instructions = self._get_template()
-
-            # Create the Azure AI Agent using AppConfig with string instructions
-            self._azure_ai_agent = await config.create_azure_ai_agent(
-                kernel=self._kernel,
-                agent_name=self._agent_name,
-                instructions=instructions,  # Pass the formatted string, not an object
-                temperature=0.0,
-                response_format=ResponseFormatJsonSchemaType(
-                    json_schema=ResponseFormatJsonSchema(
-                        name=PlannerResponsePlan.__name__,
-                        description=f"respond with {PlannerResponsePlan.__name__.lower()}",
-                        schema=PlannerResponsePlan.model_json_schema(),
-                    )
-                ),
-            )
-            logging.info("Successfully created Azure AI Agent for PlannerAgent")
+            if not self._agent:
+                # Create the Azure AI Agent using AppConfig with string instructions
+                self._agent = await config.create_azure_ai_agent(
+                    kernel=self._kernel,
+                    agent_name=self._agent_name,
+                    instructions=instructions,  # Pass the formatted string, not an object
+                    temperature=0.0,
+                    response_format=ResponseFormatJsonSchemaType(
+                        json_schema=ResponseFormatJsonSchema(
+                            name=PlannerResponsePlan.__name__,
+                            description=f"respond with {PlannerResponsePlan.__name__.lower()}",
+                            schema=PlannerResponsePlan.model_json_schema(),
+                        )
+                    ),
+                )
+                logging.info("Successfully created Azure AI Agent for PlannerAgent")
             return True
         except Exception as e:
             logging.error(f"Failed to create Azure AI Agent for PlannerAgent: {e}")
@@ -300,22 +296,16 @@ class PlannerAgent(BaseAgent):
         """
         try:
             # Generate the instruction for the LLM
-            logging.info("Generating instruction for the LLM")
-            logging.info(f"Input: {input_task}")
-            logging.info(f"Available agents: {self._available_agents}")
 
             # Get template variables as a dictionary
             args = self._generate_args(input_task.description)
-            logging.info(f"Generated args: {args}")
-            logging.info(f"Creating plan for task: '{input_task.description}'")
-            logging.info(f"Using available agents: {self._available_agents}")
 
             # Use the Azure AI Agent instead of direct function invocation
-            if self._azure_ai_agent is None:
+            if self._agent is None:
                 # Initialize the agent if it's not already done
                 await self.async_init()
 
-            if self._azure_ai_agent is None:
+            if self._agent is None:
                 raise RuntimeError("Failed to initialize Azure AI Agent for planning")
 
             # Log detailed information about the instruction being sent
@@ -336,7 +326,7 @@ class PlannerAgent(BaseAgent):
             # )
             thread = None
             # thread = self.client.agents.create_thread(thread_id=input_task.session_id)
-            async_generator = self._azure_ai_agent.invoke(
+            async_generator = self._agent.invoke(
                 arguments=kernel_args,
                 settings={
                     "temperature": 0.0,  # Keep temperature low for consistent planning
@@ -705,6 +695,9 @@ class PlannerAgent(BaseAgent):
                             )
 
         # Convert the tools list to a string representation
+        logging.info(f"Tools list: {len(tools_list)}")
+        logging
+
         tools_str = str(tools_list)
 
         # Return a dictionary with template variables

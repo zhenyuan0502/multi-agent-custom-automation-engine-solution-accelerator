@@ -214,13 +214,12 @@ class AgentFactory:
                 if k in valid_keys
             }
             agent = agent_class(**filtered_kwargs)
-            logger.info(f"[DEBUG] Agent object after instantiation: {agent}")
+
             # Initialize the agent asynchronously if it has async_init
             if hasattr(agent, "async_init") and inspect.iscoroutinefunction(
                 agent.async_init
             ):
                 init_result = await agent.async_init()
-                logger.info(f"[DEBUG] Result of agent.async_init(): {init_result}")
 
         except Exception as e:
             logger.error(
